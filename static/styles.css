@@ -1,0 +1,137 @@
+:root {
+  --bg: #f4f2ee;
+  --card: #ffffff;
+  --text: #1f1f1f;
+  --muted: #666666;
+  --accent: #1f6feb;
+  --accent-2: #f2a900;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Vazirmatn", "Segoe UI", Tahoma, sans-serif;
+  background: radial-gradient(circle at top, #ffffff 0%, #f4f2ee 40%, #efe6dd 100%);
+  color: var(--text);
+}
+
+.container {
+  max-width: 860px;
+  margin: 40px auto;
+  padding: 0 16px 40px;
+}
+
+.header {
+  text-align: right;
+  margin-bottom: 24px;
+}
+
+.header h1 {
+  margin: 0 0 8px;
+  font-size: 2.4rem;
+}
+
+.header p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.card {
+  background: var(--card);
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.08);
+}
+
+.task-form {
+  display: flex;
+  gap: 12px;
+}
+
+.task-form input {
+  flex: 1;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid #ddd;
+  font-size: 1rem;
+}
+
+.task-form button {
+  padding: 12px 18px;
+  border: none;
+  border-radius: 12px;
+  background: var(--accent);
+  color: white;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.task-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.task-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: #f8f8f8;
+  border-radius: 12px;
+}
+
+.task-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.task-name {
+  font-weight: 600;
+}
+
+.task-time {
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.task-actions button {
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.task-actions .start {
+  background: var(--accent-2);
+  color: #222;
+}
+
+.task-actions .stop {
+  background: #e85d75;
+  color: white;
+}
+
+.empty {
+  color: var(--muted);
+}
+
+@media (max-width: 640px) {
+  .task-form {
+    flex-direction: column;
+  }
+
+  .task-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+}
