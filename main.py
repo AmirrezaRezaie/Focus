@@ -24,10 +24,18 @@ def create_app():
     app.config["AUTH_COOKIE_NAME"] = os.getenv("AUTH_COOKIE_NAME", "goalixa_auth")
     app.config["SKIP_AUTH"] = os.getenv("SKIP_AUTH", "0") == "1"
     # Dual-token authentication configuration
-    app.config["AUTH_ACCESS_TOKEN_TTL_MINUTES"] = int(os.getenv("AUTH_ACCESS_TOKEN_TTL_MINUTES", "15"))
-    app.config["AUTH_REFRESH_TOKEN_TTL_DAYS"] = int(os.getenv("AUTH_REFRESH_TOKEN_TTL_DAYS", "7"))
-    app.config["AUTH_ACCESS_COOKIE_NAME"] = os.getenv("AUTH_ACCESS_COOKIE_NAME", "goalixa_access")
-    app.config["AUTH_REFRESH_COOKIE_NAME"] = os.getenv("AUTH_REFRESH_COOKIE_NAME", "goalixa_refresh")
+    app.config["AUTH_ACCESS_TOKEN_TTL_MINUTES"] = int(
+        os.getenv("AUTH_ACCESS_TOKEN_TTL_MINUTES", "15")
+    )
+    app.config["AUTH_REFRESH_TOKEN_TTL_DAYS"] = int(
+        os.getenv("AUTH_REFRESH_TOKEN_TTL_DAYS", "7")
+    )
+    app.config["AUTH_ACCESS_COOKIE_NAME"] = os.getenv(
+        "AUTH_ACCESS_COOKIE_NAME", "goalixa_access"
+    )
+    app.config["AUTH_REFRESH_COOKIE_NAME"] = os.getenv(
+        "AUTH_REFRESH_COOKIE_NAME", "goalixa_refresh"
+    )
     app.config["AUTH_COOKIE_SAMESITE"] = os.getenv("AUTH_COOKIE_SAMESITE", "Lax")
     app.config["AUTH_COOKIE_SECURE"] = os.getenv("AUTH_COOKIE_SECURE", "0") == "1"
     app.config["AUTH_COOKIE_DOMAIN"] = os.getenv("AUTH_COOKIE_DOMAIN")
@@ -40,10 +48,16 @@ def create_app():
     register_auth_routes(app)
 
     database_url = os.getenv("DATABASE_URL")
+    auth_database_url = os.getenv("AUTH_DATABASE_URL")
     if not database_url:
-        raise RuntimeError("DATABASE_URL must be set (e.g. postgresql://user:pass@host:5432/db)")
+        raise RuntimeError(
+            "DATABASE_URL must be set (e.g. postgresql://user:pass@host:5432/db)"
+        )
     app.config["DATABASE_URL"] = database_url
-    repository = PostgresTaskRepository(database_url)
+    app.config["AUTH_DATABASE_URL"] = auth_database_url
+    repository = PostgresTaskRepository(
+        database_url, auth_database_url=auth_database_url
+    )
     service = TaskService(repository)
     service.daily_focus_service = DailyFocusService(repository)
 

@@ -38,8 +38,12 @@ current_user = LocalProxy(lambda: getattr(g, "auth_user", AnonymousUser()))
 
 
 def _auth_settings():
-    access_cookie_name = current_app.config.get("AUTH_ACCESS_COOKIE_NAME", "goalixa_access")
-    refresh_cookie_name = current_app.config.get("AUTH_REFRESH_COOKIE_NAME", "goalixa_refresh")
+    access_cookie_name = current_app.config.get(
+        "AUTH_ACCESS_COOKIE_NAME", "goalixa_access"
+    )
+    refresh_cookie_name = current_app.config.get(
+        "AUTH_REFRESH_COOKIE_NAME", "goalixa_refresh"
+    )
     secret = current_app.config.get("AUTH_JWT_SECRET", "dev-jwt-secret")
     access_ttl = current_app.config.get("AUTH_ACCESS_TOKEN_TTL_MINUTES", 15)
     refresh_ttl = current_app.config.get("AUTH_REFRESH_TOKEN_TTL_DAYS", 7)
@@ -48,13 +52,24 @@ def _auth_settings():
     # Use 'Lax' by default for better browser compatibility
     samesite_config = current_app.config.get("AUTH_COOKIE_SAMESITE", "Lax")
     samesite = None if samesite_config == "None" else samesite_config
-    return access_cookie_name, refresh_cookie_name, secret, access_ttl, refresh_ttl, samesite, current_app.config.get("AUTH_COOKIE_DOMAIN"), current_app.config.get("AUTH_COOKIE_SECURE", True)
+    return (
+        access_cookie_name,
+        refresh_cookie_name,
+        secret,
+        access_ttl,
+        refresh_ttl,
+        samesite,
+        current_app.config.get("AUTH_COOKIE_DOMAIN"),
+        current_app.config.get("AUTH_COOKIE_SECURE", True),
+    )
 
 
 def _decode_token(token, secret):
     """Legacy function - decodes old single-token format."""
     try:
-        payload = jwt.decode(token, secret, algorithms=["HS256"], options={"require": ["exp", "sub"]})
+        payload = jwt.decode(
+            token, secret, algorithms=["HS256"], options={"require": ["exp", "sub"]}
+        )
     except jwt.PyJWTError:
         return None
     return payload
@@ -67,7 +82,16 @@ def _load_user_from_request():
     2. If access token invalid, try refresh token and auto-issue new access token
     3. Fall back to legacy single-token format for backward compatibility
     """
-    access_cookie_name, refresh_cookie_name, secret, access_ttl, refresh_ttl, _, _, _ = _auth_settings()
+    (
+        access_cookie_name,
+        refresh_cookie_name,
+        secret,
+        access_ttl,
+        refresh_ttl,
+        _,
+        _,
+        _,
+    ) = _auth_settings()
 
     # Try access token first (new dual-token system)
     access_token = request.cookies.get(access_cookie_name)
@@ -79,27 +103,49 @@ def _load_user_from_request():
             except (TypeError, ValueError):
                 pass
             else:
-                return AuthUser(user_id=user_id, email=payload.get("email", ""), role=payload.get("role", "user"))
+                return AuthUser(
+                    user_id=user_id,
+                    email=payload.get("email", ""),
+                    role=payload.get("role", "user"),
+                )
 
     # Access token missing or invalid, try refresh token
     refresh_token = request.cookies.get(refresh_cookie_name)
     if refresh_token:
         payload, err = decode_refresh_token(refresh_token, secret)
         if err:
-            current_app.logger.warning("Refresh token decode failed", extra={"error": err, "path": request.path})
+            current_app.logger.warning(
+                "Refresh token decode failed",
+                extra={"error": err, "path": request.path},
+            )
         elif not payload or "sub" not in payload or "jti" not in payload:
-            current_app.logger.warning("Refresh token invalid payload", extra={"has_payload": bool(payload), "path": request.path})
+            current_app.logger.warning(
+                "Refresh token invalid payload",
+                extra={"has_payload": bool(payload), "path": request.path},
+            )
         elif payload and "sub" in payload and "jti" in payload:
             try:
                 user_id = int(payload.get("sub"))
             except (TypeError, ValueError):
-                current_app.logger.warning("Refresh token has invalid user_id", extra={"sub": payload.get("sub")})
+                current_app.logger.warning(
+                    "Refresh token has invalid user_id",
+                    extra={"sub": payload.get("sub")},
+                )
             else:
                 # Check if refresh token is valid in database
                 from app.auth.token_repository import RefreshTokenRepository
 
-                auth_db_url = current_app.config.get("AUTH_DATABASE_URL", current_app.config.get("DATABASE_URL"))
-                current_app.logger.info("Attempting refresh token validation", extra={"user_id": user_id, "jti": payload.get("jti"), "auth_db": auth_db_url[:50] + "..." if auth_db_url else "None"})
+                auth_db_url = current_app.config.get(
+                    "AUTH_DATABASE_URL", current_app.config.get("DATABASE_URL")
+                )
+                current_app.logger.info(
+                    "Attempting refresh token validation",
+                    extra={
+                        "user_id": user_id,
+                        "jti": payload.get("jti"),
+                        "auth_db": auth_db_url[:50] + "..." if auth_db_url else "None",
+                    },
+                )
 
                 token_repo = RefreshTokenRepository(auth_db_url)
 
@@ -110,10 +156,21 @@ def _load_user_from_request():
                     # Use the tokens from the pending refresh
                     g.new_access_token = pending_tokens["access_token"]
                     g.new_refresh_token = pending_tokens.get("refresh_token")
-                    return AuthUser(user_id=user_id, email=payload.get("email", ""), role=payload.get("role", "user"))
+                    return AuthUser(
+                        user_id=user_id,
+                        email=payload.get("email", ""),
+                        role=payload.get("role", "user"),
+                    )
 
                 is_valid = token_repo.is_token_valid(payload["jti"], user_id)
-                current_app.logger.info("Refresh token validation result", extra={"user_id": user_id, "jti": payload.get("jti"), "is_valid": is_valid})
+                current_app.logger.info(
+                    "Refresh token validation result",
+                    extra={
+                        "user_id": user_id,
+                        "jti": payload.get("jti"),
+                        "is_valid": is_valid,
+                    },
+                )
 
                 if is_valid:
                     # Try to acquire lock with a reasonable timeout
@@ -123,13 +180,20 @@ def _load_user_from_request():
                         # Lock acquisition timed out - wait a bit and check for pending refresh again
                         # This handles the case where another request is doing the refresh
                         import time
+
                         for _ in range(10):  # Try up to 10 times (1 second total)
                             time.sleep(0.1)
                             pending_tokens = _pending_refreshes.get(user_id)
                             if pending_tokens and pending_tokens.get("access_token"):
                                 g.new_access_token = pending_tokens["access_token"]
-                                g.new_refresh_token = pending_tokens.get("refresh_token")
-                                return AuthUser(user_id=user_id, email=payload.get("email", ""), role=payload.get("role", "user"))
+                                g.new_refresh_token = pending_tokens.get(
+                                    "refresh_token"
+                                )
+                                return AuthUser(
+                                    user_id=user_id,
+                                    email=payload.get("email", ""),
+                                    role=payload.get("role", "user"),
+                                )
 
                         # If we still don't have tokens, try to proceed with rotation
                         # The token might have been rotated but we missed the pending window
@@ -148,7 +212,11 @@ def _load_user_from_request():
                                 ttl_minutes=access_ttl,
                             )
                             g.new_access_token = new_access_token
-                            return AuthUser(user_id=user_id, email=payload.get("email", ""), role=payload.get("role", "user"))
+                            return AuthUser(
+                                user_id=user_id,
+                                email=payload.get("email", ""),
+                                role=payload.get("role", "user"),
+                            )
 
                         # Auto-issue new access token and rotate refresh token
                         new_access_token = create_access_token(
@@ -160,6 +228,7 @@ def _load_user_from_request():
 
                         # Rotate refresh token: create new one and revoke old
                         from datetime import datetime, timedelta
+
                         new_refresh_token_str = create_refresh_token_string()
                         new_refresh_token_jwt = create_refresh_token_jwt(
                             user_id=user_id,
@@ -168,13 +237,15 @@ def _load_user_from_request():
                             ttl_days=refresh_ttl,
                         )
 
-                        new_refresh_expires = datetime.now(timezone.utc) + timedelta(days=refresh_ttl)
+                        new_refresh_expires = datetime.now(timezone.utc) + timedelta(
+                            days=refresh_ttl
+                        )
 
                         # Store in pending refreshes BEFORE database operation
                         # This allows other concurrent requests to use the new tokens immediately
                         _pending_refreshes[user_id] = {
                             "access_token": new_access_token,
-                            "refresh_token": new_refresh_token_jwt
+                            "refresh_token": new_refresh_token_jwt,
                         }
 
                         # Perform the database rotation
@@ -191,7 +262,7 @@ def _load_user_from_request():
                             # But still return authenticated with the access token we created
                             current_app.logger.error(
                                 "token rotation failed, but user is still authenticated",
-                                extra={"user_id": user_id, "error": str(e)}
+                                extra={"user_id": user_id, "error": str(e)},
                             )
                             # Remove from pending so next request can try again
                             _pending_refreshes.pop(user_id, None)
@@ -199,7 +270,11 @@ def _load_user_from_request():
                         # Signal to set new access AND refresh token cookies in after_request
                         g.new_access_token = new_access_token
                         g.new_refresh_token = new_refresh_token_jwt
-                        return AuthUser(user_id=user_id, email=payload.get("email", ""), role=payload.get("role", "user"))
+                        return AuthUser(
+                            user_id=user_id,
+                            email=payload.get("email", ""),
+                            role=payload.get("role", "user"),
+                        )
 
                     finally:
                         # Only release if we acquired the lock
@@ -209,11 +284,16 @@ def _load_user_from_request():
                         # Clean up pending refresh after a longer delay (2 seconds)
                         # This gives concurrent requests more time to use the pending tokens
                         import threading
+
                         def cleanup_pending_refresh():
                             import time
+
                             time.sleep(2.0)
                             _pending_refreshes.pop(user_id, None)
-                        cleanup_thread = threading.Thread(target=cleanup_pending_refresh, daemon=True)
+
+                        cleanup_thread = threading.Thread(
+                            target=cleanup_pending_refresh, daemon=True
+                        )
                         cleanup_thread.start()
 
     # Fall back to legacy single-token format for backward compatibility
@@ -233,7 +313,11 @@ def _load_user_from_request():
                 except (TypeError, ValueError):
                     pass
                 else:
-                    return AuthUser(user_id=user_id, email=payload.get("email", ""), role=payload.get("role", "user"))
+                    return AuthUser(
+                        user_id=user_id,
+                        email=payload.get("email", ""),
+                        role=payload.get("role", "user"),
+                    )
 
     # Also check Authorization header for access/refresh tokens
     auth_header = request.headers.get("Authorization", "")
@@ -247,10 +331,20 @@ def _load_user_from_request():
             except (TypeError, ValueError):
                 pass
             else:
-                return AuthUser(user_id=user_id, email=payload.get("email", ""), role=payload.get("role", "user"))
+                return AuthUser(
+                    user_id=user_id,
+                    email=payload.get("email", ""),
+                    role=payload.get("role", "user"),
+                )
 
-    current_app.logger.debug("No valid token found, returning AnonymousUser",
-        extra={"path": request.path, "has_access_cookie": bool(request.cookies.get(access_cookie_name)), "has_refresh_cookie": bool(refresh_token)})
+    current_app.logger.debug(
+        "No valid token found, returning AnonymousUser",
+        extra={
+            "path": request.path,
+            "has_access_cookie": bool(request.cookies.get(access_cookie_name)),
+            "has_refresh_cookie": bool(refresh_token),
+        },
+    )
     return AnonymousUser()
 
 
@@ -268,7 +362,16 @@ def init_auth(app):
     @app.after_request
     def set_new_tokens(response):
         """Set new access and/or refresh token cookies if they were auto-refreshed."""
-        access_cookie_name, refresh_cookie_name, _, access_ttl, refresh_ttl, samesite, cookie_domain, cookie_secure = _auth_settings()
+        (
+            access_cookie_name,
+            refresh_cookie_name,
+            _,
+            access_ttl,
+            refresh_ttl,
+            samesite,
+            cookie_domain,
+            cookie_secure,
+        ) = _auth_settings()
 
         if hasattr(g, "new_access_token"):
             response.set_cookie(
@@ -295,6 +398,7 @@ def init_auth(app):
             )
         return response
 
+
 def auth_required():
     def decorator(func):
         @wraps(func)
@@ -312,6 +416,7 @@ def auth_required():
 
 def admin_required():
     """Decorator to require admin role."""
+
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -319,13 +424,13 @@ def admin_required():
             skip_auth = current_app.config.get("SKIP_AUTH", False)
             if skip_auth:
                 return func(*args, **kwargs)
-            
+
             if not current_user.is_authenticated:
                 return jsonify({"error": "unauthorized"}), 401
-                
+
             if not current_user.is_admin:
                 return jsonify({"error": "forbidden: admin access required"}), 403
-                
+
             return func(*args, **kwargs)
 
         return wrapper
@@ -335,11 +440,20 @@ def admin_required():
 
 def issue_auth_response(user):
     """
-    
+
     Issue auth response with access and refresh tokens set as cookies.
     Returns JSON response.
     """
-    access_cookie_name, refresh_cookie_name, secret, access_ttl, refresh_ttl, samesite, cookie_domain, cookie_secure = _auth_settings()
+    (
+        access_cookie_name,
+        refresh_cookie_name,
+        secret,
+        access_ttl,
+        refresh_ttl,
+        samesite,
+        cookie_domain,
+        cookie_secure,
+    ) = _auth_settings()
 
     # Create access token
     access_token = create_access_token(
@@ -352,7 +466,11 @@ def issue_auth_response(user):
     # Create refresh token
     from app.auth.token_repository import RefreshTokenRepository
 
-    token_repo = RefreshTokenRepository(current_app.config.get("AUTH_DATABASE_URL", current_app.config.get("DATABASE_URL")))
+    token_repo = RefreshTokenRepository(
+        current_app.config.get(
+            "AUTH_DATABASE_URL", current_app.config.get("DATABASE_URL")
+        )
+    )
 
     # Ensure user exists in app database
     token_repo.ensure_user_exists(user.id, user.email, g)
@@ -399,7 +517,9 @@ def clear_auth_cookies():
     """Clear both access and refresh cookies."""
     from flask import make_response
 
-    access_cookie_name, refresh_cookie_name, _, _, _, samesite, cookie_domain, _ = _auth_settings()
+    access_cookie_name, refresh_cookie_name, _, _, _, samesite, cookie_domain, _ = (
+        _auth_settings()
+    )
 
     response = make_response()
 

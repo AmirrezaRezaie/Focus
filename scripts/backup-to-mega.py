@@ -36,6 +36,7 @@ import re
 
 try:
     from mega import Mega
+
     MEGA_SDK_AVAILABLE = True
 except ImportError:
     MEGA_SDK_AVAILABLE = False
@@ -43,8 +44,8 @@ except ImportError:
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='[%(asctime)s] %(levelname)s: %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
+    format="[%(asctime)s] %(levelname)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger(__name__)
 
@@ -54,28 +55,32 @@ class MegaBackupManager:
 
     def __init__(self):
         """Initialize backup manager with environment variables."""
-        self.postgres_host = os.getenv('POSTGRES_HOST', 'localhost')
-        self.postgres_port = os.getenv('POSTGRES_PORT', '5432')
-        self.postgres_user = os.getenv('POSTGRES_USER', 'goalixa')
-        self.postgres_password = os.getenv('POSTGRES_PASSWORD')
-        self.postgres_db = os.getenv('POSTGRES_DB', 'goalixa')
+        self.postgres_host = os.getenv("POSTGRES_HOST", "localhost")
+        self.postgres_port = os.getenv("POSTGRES_PORT", "5432")
+        self.postgres_user = os.getenv("POSTGRES_USER", "goalixa")
+        self.postgres_password = os.getenv("POSTGRES_PASSWORD")
+        self.postgres_db = os.getenv("POSTGRES_DB", "goalixa")
 
-        self.mega_email = os.getenv('MEGA_EMAIL')
-        self.mega_password = os.getenv('MEGA_PASSWORD')
-        self.mega_backup_path = os.getenv('MEGA_BACKUP_PATH', '/goalixa-backups')
+        self.mega_email = os.getenv("MEGA_EMAIL")
+        self.mega_password = os.getenv("MEGA_PASSWORD")
+        self.mega_backup_path = os.getenv("MEGA_BACKUP_PATH", "/goalixa-backups")
 
-        self.retention_days = int(os.getenv('BACKUP_RETENTION_DAYS', '7'))
-        self.retention_weeks = int(os.getenv('BACKUP_RETENTION_WEEKS', '4'))
-        self.retention_months = int(os.getenv('BACKUP_RETENTION_MONTHS', '3'))
+        self.retention_days = int(os.getenv("BACKUP_RETENTION_DAYS", "7"))
+        self.retention_weeks = int(os.getenv("BACKUP_RETENTION_WEEKS", "4"))
+        self.retention_months = int(os.getenv("BACKUP_RETENTION_MONTHS", "3"))
 
-        self.temp_dir = tempfile.mkdtemp(prefix='goalixa_backup_')
+        self.temp_dir = tempfile.mkdtemp(prefix="goalixa_backup_")
         self.mega_client = None
         self.use_mega_cli = not MEGA_SDK_AVAILABLE
 
         logger.info("Backup manager initialized")
-        logger.info(f"Database: {self.postgres_user}@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}")
+        logger.info(
+            f"Database: {self.postgres_user}@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+        )
         logger.info(f"Mega path: {self.mega_backup_path}")
-        logger.info(f"Retention: {self.retention_days} daily, {self.retention_weeks} weekly, {self.retention_months} monthly")
+        logger.info(
+            f"Retention: {self.retention_days} daily, {self.retention_weeks} weekly, {self.retention_months} monthly"
+        )
         if MEGA_SDK_AVAILABLE:
             logger.info("Using Mega Python SDK")
         else:
@@ -83,11 +88,13 @@ class MegaBackupManager:
 
     def validate_config(self) -> bool:
         """Validate required configuration."""
-        required = ['POSTGRES_PASSWORD', 'MEGA_EMAIL', 'MEGA_PASSWORD']
+        required = ["POSTGRES_PASSWORD", "MEGA_EMAIL", "MEGA_PASSWORD"]
         missing = [v for v in required if not os.getenv(v)]
 
         if missing:
-            logger.error(f"Missing required environment variables: {', '.join(missing)}")
+            logger.error(
+                f"Missing required environment variables: {', '.join(missing)}"
+            )
             return False
 
         return True
@@ -106,26 +113,30 @@ class MegaBackupManager:
         logger.info(f"Creating backup: {backup_name}")
 
         env = os.environ.copy()
-        env['PGPASSWORD'] = self.postgres_password
+        env["PGPASSWORD"] = self.postgres_password
 
         try:
             # Create uncompressed dump
-            dump_path = backup_path.replace('.gz', '')
-            with open(dump_path, 'w') as dump_file:
+            dump_path = backup_path.replace(".gz", "")
+            with open(dump_path, "w") as dump_file:
                 result = subprocess.run(
                     [
-                        'pg_dump',
-                        '-h', self.postgres_host,
-                        '-p', self.postgres_port,
-                        '-U', self.postgres_user,
-                        '-d', self.postgres_db,
-                        '--no-password'
+                        "pg_dump",
+                        "-h",
+                        self.postgres_host,
+                        "-p",
+                        self.postgres_port,
+                        "-U",
+                        self.postgres_user,
+                        "-d",
+                        self.postgres_db,
+                        "--no-password",
                     ],
                     env=env,
                     stdout=dump_file,
                     stderr=subprocess.PIPE,
                     text=True,
-                    timeout=300
+                    timeout=300,
                 )
 
             if result.returncode != 0:
@@ -142,8 +153,8 @@ class MegaBackupManager:
 
             # Compress with gzip level 9
             logger.info("Compressing backup...")
-            with open(dump_path, 'rb') as f_in:
-                with gzip.open(backup_path, 'wb', compresslevel=9) as f_out:
+            with open(dump_path, "rb") as f_in:
+                with gzip.open(backup_path, "wb", compresslevel=9) as f_out:
                     shutil.copyfileobj(f_in, f_out)
 
             # Remove uncompressed dump
@@ -151,7 +162,9 @@ class MegaBackupManager:
 
             compressed_size = os.path.getsize(backup_path)
             ratio = (1 - compressed_size / dump_size) * 100
-            logger.info(f"Compressed: {compressed_size:,} bytes ({ratio:.1f}% reduction)")
+            logger.info(
+                f"Compressed: {compressed_size:,} bytes ({ratio:.1f}% reduction)"
+            )
 
             return backup_path
 
@@ -176,10 +189,10 @@ class MegaBackupManager:
             else:
                 # Use CLI
                 result = subprocess.run(
-                    ['mega-login', self.mega_email, self.mega_password],
+                    ["mega-login", self.mega_email, self.mega_password],
                     capture_output=True,
                     text=True,
-                    timeout=30
+                    timeout=30,
                 )
 
                 if result.returncode != 0:
@@ -222,7 +235,9 @@ class MegaBackupManager:
 
                     # Upload file
                     self.mega_client.upload(backup_path, folder[0])
-                    logger.info(f"Uploaded successfully: {self.mega_backup_path}/{backup_name}")
+                    logger.info(
+                        f"Uploaded successfully: {self.mega_backup_path}/{backup_name}"
+                    )
                     return True
                 except Exception as e:
                     logger.error(f"SDK upload failed: {e}")
@@ -230,17 +245,19 @@ class MegaBackupManager:
             else:
                 # Use CLI
                 result = subprocess.run(
-                    ['mega-put', backup_path, f"{self.mega_backup_path}/{backup_name}"],
+                    ["mega-put", backup_path, f"{self.mega_backup_path}/{backup_name}"],
                     capture_output=True,
                     text=True,
-                    timeout=300
+                    timeout=300,
                 )
 
                 if result.returncode != 0:
                     logger.error(f"Mega upload failed: {result.stderr}")
                     return False
 
-                logger.info(f"Uploaded successfully: {self.mega_backup_path}/{backup_name}")
+                logger.info(
+                    f"Uploaded successfully: {self.mega_backup_path}/{backup_name}"
+                )
                 return True
 
         except subprocess.TimeoutExpired:
@@ -253,7 +270,7 @@ class MegaBackupManager:
     def mega_logout(self) -> bool:
         """Logout from Mega."""
         try:
-            subprocess.run(['mega-logout'], capture_output=True, timeout=10)
+            subprocess.run(["mega-logout"], capture_output=True, timeout=10)
             logger.info("Logged out from Mega")
             return True
         except Exception as e:
@@ -271,10 +288,10 @@ class MegaBackupManager:
 
         try:
             result = subprocess.run(
-                ['mega-ls', '-l', self.mega_backup_path],
+                ["mega-ls", "-l", self.mega_backup_path],
                 capture_output=True,
                 text=True,
-                timeout=30
+                timeout=30,
             )
 
             if result.returncode != 0:
@@ -283,9 +300,9 @@ class MegaBackupManager:
 
             # Parse mega-ls output: lines like "FILE  1234  Oct 01 12:34 goalixa_20260501_143000.sql.gz"
             backups = []
-            for line in result.stdout.split('\n'):
+            for line in result.stdout.split("\n"):
                 line = line.strip()
-                if line and 'goalixa_' in line and '.sql.gz' in line:
+                if line and "goalixa_" in line and ".sql.gz" in line:
                     # Extract filename
                     parts = line.split()
                     if len(parts) >= 4:
@@ -310,7 +327,7 @@ class MegaBackupManager:
         Returns:
             datetime object or None
         """
-        match = re.match(r'goalixa_(\d{8})_(\d{6})\.sql\.gz', filename)
+        match = re.match(r"goalixa_(\d{8})_(\d{6})\.sql\.gz", filename)
         if match:
             date_str = f"{match.group(1)}{match.group(2)}"
             try:
@@ -349,7 +366,7 @@ class MegaBackupManager:
         keep_set = set()
 
         # Daily: keep last N days
-        for backup, date in backup_dates[-self.retention_days:]:
+        for backup, date in backup_dates[-self.retention_days :]:
             keep_set.add(backup)
 
         # Weekly: keep first backup of each week (last 4 weeks)
@@ -359,7 +376,7 @@ class MegaBackupManager:
             if week_key not in weekly:
                 weekly[week_key] = (backup, date)
 
-        for backup, date in list(weekly.values())[-self.retention_weeks:]:
+        for backup, date in list(weekly.values())[-self.retention_weeks :]:
             keep_set.add(backup)
 
         # Monthly: keep first backup of each month (last 3 months)
@@ -369,7 +386,7 @@ class MegaBackupManager:
             if month_key not in monthly:
                 monthly[month_key] = (backup, date)
 
-        for backup, date in list(monthly.values())[-self.retention_months:]:
+        for backup, date in list(monthly.values())[-self.retention_months :]:
             keep_set.add(backup)
 
         # Determine deletions
@@ -401,10 +418,10 @@ class MegaBackupManager:
         for backup in backups_to_delete:
             try:
                 result = subprocess.run(
-                    ['mega-rm', f"{self.mega_backup_path}/{backup}"],
+                    ["mega-rm", f"{self.mega_backup_path}/{backup}"],
                     capture_output=True,
                     text=True,
-                    timeout=30
+                    timeout=30,
                 )
 
                 if result.returncode != 0:
@@ -480,5 +497,5 @@ def main():
     sys.exit(exit_code)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

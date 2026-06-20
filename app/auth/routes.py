@@ -33,7 +33,10 @@ def api_login():
 
     if not email or not password:
         logger.warning("api login missing credentials")
-        return jsonify({"success": False, "error": "Email and password are required."}), 400
+        return (
+            jsonify({"success": False, "error": "Email and password are required."}),
+            400,
+        )
 
     # Get database connection and check user
     from app.auth_client import issue_auth_response
@@ -59,7 +62,10 @@ def api_register():
 
     if not email or not password:
         logger.warning("api register missing credentials")
-        return jsonify({"success": False, "error": "Email and password are required."}), 400
+        return (
+            jsonify({"success": False, "error": "Email and password are required."}),
+            400,
+        )
 
     # For now, we'll accept any registration and create a user on-the-fly
     # This should be replaced with proper user creation logic
@@ -103,7 +109,11 @@ def api_refresh():
         logger.warning("api refresh invalid user_id", extra={"sub": payload.get("sub")})
         return jsonify({"success": False, "error": "Invalid refresh token."}), 401
 
-    token_repo = RefreshTokenRepository(current_app.config.get("AUTH_DATABASE_URL", current_app.config.get("DATABASE_URL")))
+    token_repo = RefreshTokenRepository(
+        current_app.config.get(
+            "AUTH_DATABASE_URL", current_app.config.get("DATABASE_URL")
+        )
+    )
     refresh_token = token_repo.get_refresh_token(payload["jti"], user_id)
 
     if not refresh_token or not token_repo.is_token_valid(payload["jti"], user_id):
@@ -111,7 +121,10 @@ def api_refresh():
             "api refresh token invalid or revoked",
             extra={"token_id": payload["jti"], "user_id": user_id},
         )
-        return jsonify({"success": False, "error": "Invalid or expired refresh token."}), 401
+        return (
+            jsonify({"success": False, "error": "Invalid or expired refresh token."}),
+            401,
+        )
 
     # Create new access token
     access_token = create_access_token(
@@ -188,11 +201,20 @@ def api_logout():
     if refresh_token_jwt:
         payload, err = decode_refresh_token(refresh_token_jwt, secret)
         if not err and payload and "jti" in payload:
-            token_repo = RefreshTokenRepository(current_app.config.get("AUTH_DATABASE_URL", current_app.config.get("DATABASE_URL")))
-            token = token_repo.get_refresh_token(payload["jti"], int(payload.get("sub", 0)))
+            token_repo = RefreshTokenRepository(
+                current_app.config.get(
+                    "AUTH_DATABASE_URL", current_app.config.get("DATABASE_URL")
+                )
+            )
+            token = token_repo.get_refresh_token(
+                payload["jti"], int(payload.get("sub", 0))
+            )
             if token and token.get("revoked_at") is None:
                 token_repo.revoke_refresh_token(payload["jti"])
-                logger.info("revoked refresh token on logout", extra={"token_id": payload["jti"]})
+                logger.info(
+                    "revoked refresh token on logout",
+                    extra={"token_id": payload["jti"]},
+                )
 
     logger.info("api logout")
 

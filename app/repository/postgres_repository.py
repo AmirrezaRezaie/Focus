@@ -1,6 +1,6 @@
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import psycopg
 from psycopg.rows import dict_row
@@ -13,8 +13,9 @@ class UserEmailConflictError(RuntimeError):
 
 
 class PostgresTaskRepository:
-    def __init__(self, database_url):
+    def __init__(self, database_url, auth_database_url=None):
         self.database_url = database_url
+        self.auth_database_url = auth_database_url or database_url
         self.user_id = None
         self._table_columns_cache = {}
         self.connect_timeout_seconds = max(
@@ -66,6 +67,14 @@ class PostgresTaskRepository:
                     break
                 time.sleep(self.connect_retry_delay_seconds)
         raise last_error
+
+    def _get_auth_db(self):
+        """Get a connection to the authentication database."""
+        return psycopg.connect(
+            self.auth_database_url,
+            row_factory=dict_row,
+            connect_timeout=self.connect_timeout_seconds,
+        )
 
     def _get_table_columns(self, table_name):
         cached = self._table_columns_cache.get(table_name)
@@ -375,22 +384,34 @@ class PostgresTaskRepository:
             "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active'"
         )
         db.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS completed_at TEXT")
-        db.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS priority TEXT NOT NULL DEFAULT 'medium'")
+        db.execute(
+            "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS priority TEXT NOT NULL DEFAULT 'medium'"
+        )
         db.execute("ALTER TABLE time_entries ADD COLUMN IF NOT EXISTS user_id INTEGER")
         db.execute("ALTER TABLE goals ADD COLUMN IF NOT EXISTS user_id INTEGER")
         db.execute("ALTER TABLE goals ADD COLUMN IF NOT EXISTS label_id INTEGER")
         db.execute("ALTER TABLE goal_subgoals ADD COLUMN IF NOT EXISTS label TEXT")
-        db.execute("ALTER TABLE goal_subgoals ADD COLUMN IF NOT EXISTS target_date TEXT")
-        db.execute("ALTER TABLE goal_subgoals ADD COLUMN IF NOT EXISTS project_id INTEGER")
+        db.execute(
+            "ALTER TABLE goal_subgoals ADD COLUMN IF NOT EXISTS target_date TEXT"
+        )
+        db.execute(
+            "ALTER TABLE goal_subgoals ADD COLUMN IF NOT EXISTS project_id INTEGER"
+        )
         db.execute("ALTER TABLE habits ADD COLUMN IF NOT EXISTS user_id INTEGER")
         db.execute("ALTER TABLE habits ADD COLUMN IF NOT EXISTS goal_name TEXT")
         db.execute("ALTER TABLE habits ADD COLUMN IF NOT EXISTS subgoal_name TEXT")
         db.execute("ALTER TABLE weekly_goals ADD COLUMN IF NOT EXISTS user_id INTEGER")
-        db.execute("ALTER TABLE weekly_goals ADD COLUMN IF NOT EXISTS long_term_goal_id INTEGER")
+        db.execute(
+            "ALTER TABLE weekly_goals ADD COLUMN IF NOT EXISTS long_term_goal_id INTEGER"
+        )
         db.execute("ALTER TABLE weekly_goals ADD COLUMN IF NOT EXISTS label_id INTEGER")
         # Add user table columns for auth compatibility
-        db.execute("ALTER TABLE \"user\" ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255)")
-        db.execute("ALTER TABLE \"user\" ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT TRUE")
+        db.execute(
+            'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255)'
+        )
+        db.execute(
+            'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT TRUE'
+        )
 
         default_user = db.execute(
             'SELECT id FROM "user" ORDER BY id ASC LIMIT 1'
@@ -465,12 +486,14 @@ class PostgresTaskRepository:
             except Exception as e:
                 # Log but don't fail if index creation fails (might already exist)
                 import logging
+
                 logger = logging.getLogger(__name__)
                 logger.warning(f"Failed to create index: {e}")
 
         # Create trigger for daily_focus updated_at timestamp
         try:
-            db.execute("""
+            db.execute(
+                """
                 CREATE OR REPLACE FUNCTION update_daily_focus_updated_at()
                 RETURNS TRIGGER AS $$
                 BEGIN
@@ -478,18 +501,24 @@ class PostgresTaskRepository:
                     RETURN NEW;
                 END;
                 $$ LANGUAGE plpgsql;
-            """)
-            db.execute("""
+            """
+            )
+            db.execute(
+                """
                 DROP TRIGGER IF EXISTS trg_daily_focus_updated_at ON daily_focus;
-            """)
-            db.execute("""
+            """
+            )
+            db.execute(
+                """
                 CREATE TRIGGER trg_daily_focus_updated_at
                     BEFORE UPDATE ON daily_focus
                     FOR EACH ROW
                     EXECUTE FUNCTION update_daily_focus_updated_at();
-            """)
+            """
+            )
         except Exception as e:
             import logging
+
             logger = logging.getLogger(__name__)
             logger.warning(f"Failed to create daily_focus trigger: {e}")
 
@@ -586,7 +615,15 @@ class PostgresTaskRepository:
         db.commit()
         return row["id"] if row else None
 
-    def update_weekly_goal(self, goal_id, title, target_seconds, status, long_term_goal_id=None, label_id=None):
+    def update_weekly_goal(
+        self,
+        goal_id,
+        title,
+        target_seconds,
+        status,
+        long_term_goal_id=None,
+        label_id=None,
+    ):
         user_id = self._require_user_id()
         db = self._get_db()
         valid_long_term_goal_id = self._coerce_owned_goal_id(long_term_goal_id, user_id)
@@ -686,9 +723,9 @@ class PostgresTaskRepository:
             # Use INSERT with ON CONFLICT to handle edge cases where
             # a concurrent transaction might have created the same user
             db.execute(
-                f'''INSERT INTO "user" ({column_list})
+                f"""INSERT INTO "user" ({column_list})
                 VALUES ({placeholders})
-                ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email''',
+                ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email""",
                 tuple(values),
             )
 
@@ -737,7 +774,9 @@ class PostgresTaskRepository:
         rolling_start = int(rolling_start or (now_ts - 24 * 60 * 60))
         day_start = int(
             day_start
-            or datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+            or datetime.utcnow()
+            .replace(hour=0, minute=0, second=0, microsecond=0)
+            .timestamp()
         )
         tasks = db.execute(
             """
@@ -804,14 +843,18 @@ class PostgresTaskRepository:
         ).fetchall()
         return tasks
 
-    def fetch_tasks_by_project(self, project_id, now_ts=None, rolling_start=None, day_start=None):
+    def fetch_tasks_by_project(
+        self, project_id, now_ts=None, rolling_start=None, day_start=None
+    ):
         db = self._get_db()
         user_id = self._require_user_id()
         now_ts = int(now_ts or datetime.utcnow().timestamp())
         rolling_start = int(rolling_start or (now_ts - 24 * 60 * 60))
         day_start = int(
             day_start
-            or datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+            or datetime.utcnow()
+            .replace(hour=0, minute=0, second=0, microsecond=0)
+            .timestamp()
         )
         tasks = db.execute(
             """
@@ -1045,8 +1088,13 @@ class PostgresTaskRepository:
             "DELETE FROM project_labels WHERE project_id = %s",
             (project_id,),
         )
-        db.execute("DELETE FROM tasks WHERE project_id = %s AND user_id = %s", (project_id, user_id))
-        db.execute("DELETE FROM projects WHERE id = %s AND user_id = %s", (project_id, user_id))
+        db.execute(
+            "DELETE FROM tasks WHERE project_id = %s AND user_id = %s",
+            (project_id, user_id),
+        )
+        db.execute(
+            "DELETE FROM projects WHERE id = %s AND user_id = %s", (project_id, user_id)
+        )
         db.commit()
 
     def fetch_labels(self):
@@ -1271,7 +1319,9 @@ class PostgresTaskRepository:
         )
         db.execute("DELETE FROM task_labels WHERE label_id = %s", (label_id,))
         db.execute("DELETE FROM project_labels WHERE label_id = %s", (label_id,))
-        db.execute("DELETE FROM labels WHERE id = %s AND user_id = %s", (label_id, user_id))
+        db.execute(
+            "DELETE FROM labels WHERE id = %s AND user_id = %s", (label_id, user_id)
+        )
         db.commit()
 
     def add_label_to_task(self, task_id, label_id):
@@ -1445,7 +1495,17 @@ class PostgresTaskRepository:
         db.commit()
         return row["id"] if row else None
 
-    def update_goal(self, goal_id, name, description, status, priority, target_date, target_seconds, label_id):
+    def update_goal(
+        self,
+        goal_id,
+        name,
+        description,
+        status,
+        priority,
+        target_date,
+        target_seconds,
+        label_id,
+    ):
         db = self._get_db()
         user_id = self._require_user_id()
         valid_label_id = self._coerce_owned_label_id(label_id, user_id)
@@ -1497,7 +1557,9 @@ class PostgresTaskRepository:
             """,
             (goal_id, user_id),
         )
-        db.execute("DELETE FROM goals WHERE id = %s AND user_id = %s", (goal_id, user_id))
+        db.execute(
+            "DELETE FROM goals WHERE id = %s AND user_id = %s", (goal_id, user_id)
+        )
         db.commit()
 
     def fetch_goal_projects(self, goal_ids):
@@ -1703,7 +1765,9 @@ class PostgresTaskRepository:
         )
         db.commit()
 
-    def add_goal_subgoal(self, goal_id, title, label, target_date, project_id, created_at):
+    def add_goal_subgoal(
+        self, goal_id, title, label, target_date, project_id, created_at
+    ):
         db = self._get_db()
         user_id = self._require_user_id()
         owns_goal = db.execute(
@@ -1811,7 +1875,9 @@ class PostgresTaskRepository:
             "DELETE FROM habit_logs WHERE habit_id IN (SELECT id FROM habits WHERE id = %s AND user_id = %s)",
             (habit_id, user_id),
         )
-        db.execute("DELETE FROM habits WHERE id = %s AND user_id = %s", (habit_id, user_id))
+        db.execute(
+            "DELETE FROM habits WHERE id = %s AND user_id = %s", (habit_id, user_id)
+        )
         db.commit()
 
     def fetch_habit_logs_for_date(self, habit_ids, log_date):
@@ -2010,25 +2076,51 @@ class PostgresTaskRepository:
         month_ago = (now - timedelta(days=30)).isoformat()
 
         stats = {}
-        
+
         # Total users
         row = db.execute('SELECT COUNT(*) as count FROM "user"').fetchone()
         stats["total_users"] = row["count"] if row else 0
 
         # Active users (active flag)
-        row = db.execute('SELECT COUNT(*) as count FROM "user" WHERE active = TRUE').fetchone()
-        stats["active_users"] = row["count"] if row else 0
+        columns = self._get_table_columns("user")
+        if "active" in columns:
+            row = db.execute(
+                'SELECT COUNT(*) as count FROM "user" WHERE active = TRUE'
+            ).fetchone()
+            stats["active_users"] = row["count"] if row else 0
+        else:
+            stats["active_users"] = stats["total_users"]
+
         stats["inactive_users"] = stats["total_users"] - stats["active_users"]
 
         # New users
-        row = db.execute('SELECT COUNT(*) as count FROM "user" WHERE created_at >= %s', (today,)).fetchone()
+        row = db.execute(
+            'SELECT COUNT(*) as count FROM "user" WHERE created_at >= %s', (today,)
+        ).fetchone()
         stats["new_users_today"] = row["count"] if row else 0
 
-        row = db.execute('SELECT COUNT(*) as count FROM "user" WHERE created_at >= %s', (week_ago,)).fetchone()
+        row = db.execute(
+            'SELECT COUNT(*) as count FROM "user" WHERE created_at >= %s', (week_ago,)
+        ).fetchone()
         stats["new_users_week"] = row["count"] if row else 0
 
-        row = db.execute('SELECT COUNT(*) as count FROM "user" WHERE created_at >= %s', (month_ago,)).fetchone()
+        row = db.execute(
+            'SELECT COUNT(*) as count FROM "user" WHERE created_at >= %s', (month_ago,)
+        ).fetchone()
         stats["new_users_month"] = row["count"] if row else 0
+
+        # Task stats
+        row = db.execute("SELECT COUNT(*) as count FROM tasks").fetchone()
+        stats["total_tasks"] = row["count"] if row else 0
+
+        row = db.execute(
+            "SELECT COUNT(*) as count FROM tasks WHERE completed_at IS NOT NULL"
+        ).fetchone()
+        stats["completed_tasks"] = row["count"] if row else 0
+
+        # Project stats
+        row = db.execute("SELECT COUNT(*) as count FROM projects").fetchone()
+        stats["total_projects"] = row["count"] if row else 0
 
         return stats
 
@@ -2036,16 +2128,108 @@ class PostgresTaskRepository:
         """Fetch all users with pagination."""
         db = self._get_db()
         offset = (page - 1) * per_page
-        
+
         users = db.execute(
             f'SELECT id, email, created_at, active FROM "user" ORDER BY created_at DESC LIMIT %s OFFSET %s',
             (per_page, offset),
         ).fetchall()
-        
+
         row = db.execute('SELECT COUNT(*) as count FROM "user"').fetchone()
         total_count = row["count"] if row else 0
-        
+
         return users, total_count
+
+    def fetch_login_history(self, page=1, per_page=20):
+        """Fetch platform-wide login history from the auth database."""
+        offset = (page - 1) * per_page
+        try:
+            with self._get_auth_db() as auth_db:
+                rows = auth_db.execute(
+                    """
+                    SELECT rt.id, u.email, rt.created_at, rt.token_id, rt.device_name
+                    FROM refresh_token rt
+                    JOIN "user" u ON u.id = rt.user_id
+                    ORDER BY rt.created_at DESC
+                    LIMIT %s OFFSET %s
+                    """,
+                    (per_page, offset),
+                ).fetchall()
+
+                row = auth_db.execute(
+                    "SELECT COUNT(*) as count FROM refresh_token"
+                ).fetchone()
+                total = row["count"] if row else 0
+                return rows, total
+        except Exception as e:
+            # Fallback to local db if auth db fails
+            db = self._get_db()
+            rows = db.execute(
+                f"SELECT id, %s as email, created_at, token_id FROM refresh_token ORDER BY created_at DESC LIMIT %s OFFSET %s",
+                ("unknown@goalixa.local", per_page, offset),
+            ).fetchall()
+            return rows, 0
+
+    def fetch_activity_series(self, days=30):
+        """Fetch activity data (registrations) for charts."""
+        db = self._get_db()
+        return db.execute(
+            """
+            WITH dates AS (
+                SELECT generate_series(
+                    CURRENT_DATE - INTERVAL '1 day' * %s,
+                    CURRENT_DATE,
+                    '1 day'::interval
+                )::date AS date
+            )
+            SELECT 
+                d.date, 
+                COUNT(u.id) as count
+            FROM dates d
+            LEFT JOIN "user" u ON u.created_at >= d.date::text 
+                             AND u.created_at < (d.date + INTERVAL '1 day')::text
+            GROUP BY d.date
+            ORDER BY d.date ASC
+            """,
+            (days,),
+        ).fetchall()
+
+    def fetch_task_activity_series(self, days=30):
+        """Fetch task creation and completion trends."""
+        db = self._get_db()
+        return db.execute(
+            """
+            WITH dates AS (
+                SELECT generate_series(
+                    CURRENT_DATE - INTERVAL '1 day' * %s,
+                    CURRENT_DATE,
+                    '1 day'::interval
+                )::date AS date
+            ),
+            created_counts AS (
+                SELECT d.date, COUNT(t.id) as count
+                FROM dates d
+                LEFT JOIN tasks t ON t.created_at >= d.date::text 
+                               AND t.created_at < (d.date + INTERVAL '1 day')::text
+                GROUP BY d.date
+            ),
+            completed_counts AS (
+                SELECT d.date, COUNT(t.id) as count
+                FROM dates d
+                LEFT JOIN tasks t ON t.completed_at >= d.date::text 
+                               AND t.completed_at < (d.date + INTERVAL '1 day')::text
+                GROUP BY d.date
+            )
+            SELECT 
+                d.date,
+                COALESCE(cr.count, 0) as created,
+                COALESCE(co.count, 0) as completed
+            FROM dates d
+            LEFT JOIN created_counts cr ON d.date = cr.date
+            LEFT JOIN completed_counts co ON d.date = co.date
+            ORDER BY d.date ASC
+            """,
+            (days,),
+        ).fetchall()
 
     def fetch_user_by_id(self, user_id):
         """Fetch a single user by ID."""
@@ -2054,6 +2238,52 @@ class PostgresTaskRepository:
             'SELECT id, email, created_at, active FROM "user" WHERE id = %s',
             (user_id,),
         ).fetchone()
+
+    def fetch_user_full_data(self, user_id):
+        """Fetch comprehensive data for a specific user."""
+        db = self._get_db()
+        user = self.fetch_user_by_id(user_id)
+        if not user:
+            return None
+
+        # Get task stats
+        task_row = db.execute(
+            "SELECT COUNT(*) as total, COUNT(completed_at) as completed FROM tasks WHERE user_id = %s",
+            (user_id,),
+        ).fetchone()
+
+        # Get project stats
+        project_row = db.execute(
+            "SELECT COUNT(*) as count FROM projects WHERE user_id = %s", (user_id,)
+        ).fetchone()
+
+        # Get last login from AUTH database
+        last_login = None
+        try:
+            with self._get_auth_db() as auth_db:
+                login_row = auth_db.execute(
+                    "SELECT created_at FROM refresh_token WHERE user_id = %s ORDER BY created_at DESC LIMIT 1",
+                    (user_id,),
+                ).fetchone()
+                if login_row:
+                    last_login = login_row["created_at"]
+        except Exception as e:
+            print(f"Error fetching last login from auth db: {e}")
+
+        # Get some recent tasks
+        recent_tasks = db.execute(
+            "SELECT id, name, status, created_at FROM tasks WHERE user_id = %s ORDER BY created_at DESC LIMIT 5",
+            (user_id,),
+        ).fetchall()
+
+        return {
+            **user,
+            "total_tasks": task_row["total"] if task_row else 0,
+            "completed_tasks": task_row["completed"] if task_row else 0,
+            "total_projects": project_row["count"] if project_row else 0,
+            "last_login": last_login,
+            "recent_tasks": [dict(t) for t in recent_tasks],
+        }
 
     def update_user_active_status(self, user_id, active):
         """Enable or disable a user."""
@@ -2401,7 +2631,11 @@ class PostgresTaskRepository:
         goals_map = {}
         for row in rows:
             goals_map.setdefault(row["project_id"], []).append(
-                {"id": row["id"], "name": row["name"], "description": row["description"]}
+                {
+                    "id": row["id"],
+                    "name": row["name"],
+                    "description": row["description"],
+                }
             )
         return goals_map
 
@@ -2450,7 +2684,9 @@ class PostgresTaskRepository:
             return
 
         # Get next available ID based on actual data (safest approach)
-        max_id = db.execute("SELECT COALESCE(MAX(id), 0) FROM time_entries").fetchone()["coalesce"]
+        max_id = db.execute("SELECT COALESCE(MAX(id), 0) FROM time_entries").fetchone()[
+            "coalesce"
+        ]
         next_id = max_id + 1
 
         db.execute(
@@ -2540,7 +2776,9 @@ class PostgresTaskRepository:
         )
         db.execute("DELETE FROM task_labels WHERE task_id = %s", (task_id,))
         db.execute("DELETE FROM task_daily_checks WHERE task_id = %s", (task_id,))
-        db.execute("DELETE FROM tasks WHERE id = %s AND user_id = %s", (task_id, user_id))
+        db.execute(
+            "DELETE FROM tasks WHERE id = %s AND user_id = %s", (task_id, user_id)
+        )
         db.commit()
 
     def fetch_time_entries_between(self, start_iso, end_iso):

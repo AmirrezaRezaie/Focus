@@ -5,7 +5,7 @@ import uuid
 
 
 def create_access_token(user_id, email, secret, ttl_minutes=15):
-    """Create a short-lived access token for dual-token authentication. """
+    """Create a short-lived access token for dual-token authentication."""
     now = datetime.now(timezone.utc)
     payload = {
         "sub": str(user_id),
@@ -46,7 +46,10 @@ def decode_access_token(token, secret):
         )
         # Check if token has type field and is an access token
         if "type" in payload and payload.get("type") != "access":
-            return None, f"Invalid token type: expected access, got {payload.get('type')}"
+            return (
+                None,
+                f"Invalid token type: expected access, got {payload.get('type')}",
+            )
         return payload, None
     except jwt.PyJWTError as exc:
         return None, str(exc)

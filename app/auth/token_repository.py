@@ -33,7 +33,9 @@ class RefreshTokenRepository:
         )
         row = cursor.fetchone()
         db.commit()
-        logger.info("refresh token created", extra={"token_id": token_str, "user_id": user_id})
+        logger.info(
+            "refresh token created", extra={"token_id": token_str, "user_id": user_id}
+        )
         return row["id"] if row else None
 
     def get_refresh_token(self, token_id, user_id, g=None):
@@ -68,7 +70,9 @@ class RefreshTokenRepository:
         )
         count = cursor.rowcount
         db.commit()
-        logger.info("all user tokens revoked", extra={"user_id": user_id, "count": count})
+        logger.info(
+            "all user tokens revoked", extra={"user_id": user_id, "count": count}
+        )
         return count
 
     def is_token_valid(self, token_id, user_id, g=None):
@@ -105,7 +109,9 @@ class RefreshTokenRepository:
 
         return expires_at >= now
 
-    def rotate_refresh_token(self, old_token_id, new_token_str, user_id, expires_at, g=None):
+    def rotate_refresh_token(
+        self, old_token_id, new_token_str, user_id, expires_at, g=None
+    ):
         """
         Rotate a refresh token: create new one and mark old as revoked.
         Returns the new token ID.
@@ -138,7 +144,11 @@ class RefreshTokenRepository:
         db.commit()
         logger.info(
             "refresh token rotated",
-            extra={"old_token_id": old_token_id, "new_token_id": new_token_str, "user_id": user_id},
+            extra={
+                "old_token_id": old_token_id,
+                "new_token_id": new_token_str,
+                "user_id": user_id,
+            },
         )
         return new_id
 
@@ -161,5 +171,7 @@ class RefreshTokenRepository:
             (user_id, email, datetime.now(timezone.utc).isoformat()),
         )
         db.commit()
-        logger.info("user created in app db", extra={"user_id": user_id, "email": email})
+        logger.info(
+            "user created in app db", extra={"user_id": user_id, "email": email}
+        )
         return user_id

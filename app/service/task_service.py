@@ -3,8 +3,10 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+
 class TaskService:
     DEMO_SEED_LOCK_ID = 922337203685477500
+
     def __init__(self, repository):
         self.repository = repository
 
@@ -135,10 +137,14 @@ class TaskService:
             return candidate, "upcoming"
 
         if interval == "daily":
-            base_date = remind_date if remind_date and remind_date > now.date() else now.date()
+            base_date = (
+                remind_date if remind_date and remind_date > now.date() else now.date()
+            )
             candidate = datetime.combine(base_date, remind_time, tzinfo=tz)
             if candidate < now:
-                candidate = datetime.combine(base_date + timedelta(days=1), remind_time, tzinfo=tz)
+                candidate = datetime.combine(
+                    base_date + timedelta(days=1), remind_time, tzinfo=tz
+                )
             return candidate, "upcoming"
 
         if interval == "weekly":
@@ -147,8 +153,12 @@ class TaskService:
                 int(day) for day in repeat_days.split(",") if day.strip().isdigit()
             ]
             if not day_indices:
-                day_indices = [remind_date.weekday()] if remind_date else [now.weekday()]
-            start_date = remind_date if remind_date and remind_date > now.date() else now.date()
+                day_indices = (
+                    [remind_date.weekday()] if remind_date else [now.weekday()]
+                )
+            start_date = (
+                remind_date if remind_date and remind_date > now.date() else now.date()
+            )
             for offset in range(0, 14):
                 candidate_date = start_date + timedelta(days=offset)
                 if candidate_date.weekday() not in day_indices:
@@ -159,8 +169,10 @@ class TaskService:
             return None, "unscheduled"
 
         if interval == "monthly":
-            base_date = remind_date if remind_date and remind_date > now.date() else now.date()
-            target_day = (remind_date.day if remind_date else now.day)
+            base_date = (
+                remind_date if remind_date and remind_date > now.date() else now.date()
+            )
+            target_day = remind_date.day if remind_date else now.day
             last_day = calendar.monthrange(base_date.year, base_date.month)[1]
             candidate_date = base_date.replace(day=min(target_day, last_day))
             candidate = datetime.combine(candidate_date, remind_time, tzinfo=tz)
@@ -190,7 +202,9 @@ class TaskService:
         play_sound = self._parse_bool_setting(
             self.repository.get_setting("notifications_play_sound"), True
         )
-        title = self.repository.get_setting("notifications_title") or "Tracking reminder"
+        title = (
+            self.repository.get_setting("notifications_title") or "Tracking reminder"
+        )
         message = (
             self.repository.get_setting("notifications_message")
             or "Start a Pomodoro to keep tracking your focus."
@@ -206,7 +220,9 @@ class TaskService:
         }
 
     def set_notification_settings(self, form_data):
-        enabled = self._parse_bool_setting(form_data.get("notifications_enabled"), False)
+        enabled = self._parse_bool_setting(
+            form_data.get("notifications_enabled"), False
+        )
         interval_raw = form_data.get("notifications_interval_minutes", "")
         try:
             interval_minutes = int(interval_raw)
@@ -222,13 +238,13 @@ class TaskService:
         play_sound = self._parse_bool_setting(
             form_data.get("notifications_play_sound"), True
         )
-        title = (form_data.get("notifications_title") or "").strip() or "Tracking reminder"
+        title = (
+            form_data.get("notifications_title") or ""
+        ).strip() or "Tracking reminder"
         message = (form_data.get("notifications_message") or "").strip()
         if not message:
             message = "Start a Pomodoro to keep tracking your focus."
-        self.repository.set_setting(
-            "notifications_enabled", "1" if enabled else "0"
-        )
+        self.repository.set_setting("notifications_enabled", "1" if enabled else "0")
         self.repository.set_setting(
             "notifications_interval_minutes", str(interval_minutes)
         )
@@ -296,7 +312,9 @@ class TaskService:
                 repeat_label = "Daily"
             elif repeat_interval == "weekly":
                 if day_indices:
-                    days_label = ", ".join(self._weekday_label(day) for day in day_indices)
+                    days_label = ", ".join(
+                        self._weekday_label(day) for day in day_indices
+                    )
                     repeat_label = f"Weekly · {days_label}"
                 else:
                     repeat_label = "Weekly"
@@ -327,11 +345,11 @@ class TaskService:
         tz_name, tz = self._get_timezone()
         now = datetime.now(tz)
         active = [reminder for reminder in reminders if reminder.get("is_active")]
-        overdue = [reminder for reminder in reminders if reminder.get("status") == "overdue"]
+        overdue = [
+            reminder for reminder in reminders if reminder.get("status") == "overdue"
+        ]
         next_candidates = [
-            reminder.get("next_at")
-            for reminder in active
-            if reminder.get("next_at")
+            reminder.get("next_at") for reminder in active if reminder.get("next_at")
         ]
         next_up = min(next_candidates) if next_candidates else None
         return {
@@ -355,7 +373,9 @@ class TaskService:
         )
         priority = (form_data.get("priority") or "normal").strip().lower()
         channel_toast = self._parse_bool_setting(form_data.get("channel_toast"), False)
-        channel_system = self._parse_bool_setting(form_data.get("channel_system"), False)
+        channel_system = self._parse_bool_setting(
+            form_data.get("channel_system"), False
+        )
         play_sound = self._parse_bool_setting(form_data.get("play_sound"), False)
         is_active = self._parse_bool_setting(form_data.get("is_active"), False)
         self.repository.create_reminder(
@@ -387,7 +407,9 @@ class TaskService:
         )
         priority = (form_data.get("priority") or "normal").strip().lower()
         channel_toast = self._parse_bool_setting(form_data.get("channel_toast"), False)
-        channel_system = self._parse_bool_setting(form_data.get("channel_system"), False)
+        channel_system = self._parse_bool_setting(
+            form_data.get("channel_system"), False
+        )
         play_sound = self._parse_bool_setting(form_data.get("play_sound"), False)
         is_active = self._parse_bool_setting(form_data.get("is_active"), False)
         self.repository.update_reminder(
@@ -542,7 +564,9 @@ class TaskService:
             if not template_path.exists():
                 return False, "Seed file not found."
             sql_template = template_path.read_text(encoding="utf-8")
-            rendered_sql = sql_template.replace("{{user_id}}", str(self.repository.user_id))
+            rendered_sql = sql_template.replace(
+                "{{user_id}}", str(self.repository.user_id)
+            )
             self.repository.execute_sql(rendered_sql)
             return True, "Seed completed."
         finally:
@@ -595,7 +619,9 @@ class TaskService:
             "completed_tasks": completed_tasks,
         }
 
-    def add_task(self, name, project_id, label_ids=None, goal_id=None, priority="medium"):
+    def add_task(
+        self, name, project_id, label_ids=None, goal_id=None, priority="medium"
+    ):
         name = (name or "").strip()
         priority = (priority or "medium").strip().lower() if priority else "medium"
         if priority not in {"high", "medium", "low"}:
@@ -615,14 +641,26 @@ class TaskService:
         if name:
             self.repository.update_task(int(task_id), name)
 
-    def update_task_details(self, task_id, name=None, project_id=None, priority=None, label_ids=None, goal_id=None):
+    def update_task_details(
+        self,
+        task_id,
+        name=None,
+        project_id=None,
+        priority=None,
+        label_ids=None,
+        goal_id=None,
+    ):
         if name is not None:
             name = (name or "").strip()
-        self.repository.update_task_details(int(task_id), name=name, project_id=project_id, priority=priority)
+        self.repository.update_task_details(
+            int(task_id), name=name, project_id=project_id, priority=priority
+        )
         if label_ids is not None:
             self.repository.set_task_labels(int(task_id), label_ids)
         if goal_id is not None:
-            self.repository.set_task_goal(int(task_id), int(goal_id) if goal_id else None)
+            self.repository.set_task_goal(
+                int(task_id), int(goal_id) if goal_id else None
+            )
 
     def list_projects(self):
         projects = self.repository.fetch_projects()
@@ -637,9 +675,7 @@ class TaskService:
                     label["id"] for label in labels_map.get(project["id"], [])
                 ],
                 "goals": goals_map.get(project["id"], []),
-                "goal_ids": [
-                    goal["id"] for goal in goals_map.get(project["id"], [])
-                ],
+                "goal_ids": [goal["id"] for goal in goals_map.get(project["id"], [])],
             }
             for project in projects
         ]
@@ -726,9 +762,7 @@ class TaskService:
         max_seconds = max((bucket["seconds"] for bucket in buckets), default=0)
         for bucket in buckets:
             bucket["percent"] = (
-                int((bucket["seconds"] / max_seconds) * 100)
-                if max_seconds
-                else 0
+                int((bucket["seconds"] / max_seconds) * 100) if max_seconds else 0
             )
             del bucket["intervals"]
             del bucket["start"]
@@ -779,9 +813,7 @@ class TaskService:
         max_seconds = max((bucket["seconds"] for bucket in buckets), default=0)
         for bucket in buckets:
             bucket["percent"] = (
-                int((bucket["seconds"] / max_seconds) * 100)
-                if max_seconds
-                else 0
+                int((bucket["seconds"] / max_seconds) * 100) if max_seconds else 0
             )
             del bucket["intervals"]
             del bucket["start"]
@@ -901,9 +933,7 @@ class TaskService:
         for entry in entries:
             entry_start = self._parse_datetime(entry["started_at"])
             entry_end = (
-                self._parse_datetime(entry["ended_at"])
-                if entry["ended_at"]
-                else now
+                self._parse_datetime(entry["ended_at"]) if entry["ended_at"] else now
             )
             overlap_start = max(entry_start, start_day)
             overlap_end = min(entry_end, end_day)
@@ -952,7 +982,9 @@ class TaskService:
         end_iso = end_day.isoformat()
 
         goals_created = self.repository.fetch_goals_created_count(start_iso, end_iso)
-        goal_status_counts = self.repository.fetch_goal_status_counts(start_iso, end_iso)
+        goal_status_counts = self.repository.fetch_goal_status_counts(
+            start_iso, end_iso
+        )
         goals_due = self.repository.fetch_goal_due_count(
             start_date.isoformat(), end_date.isoformat()
         )
@@ -963,12 +995,16 @@ class TaskService:
             start_date.isoformat(), end_date.isoformat()
         )
 
-        projects_created = self.repository.fetch_projects_created_count(start_iso, end_iso)
+        projects_created = self.repository.fetch_projects_created_count(
+            start_iso, end_iso
+        )
         project_totals = self.project_totals_by_range(start_date, end_date)
         active_projects = len(project_totals)
 
         tasks_created = self.repository.fetch_tasks_created_count(start_iso, end_iso)
-        tasks_completed = self.repository.fetch_tasks_completed_count(start_iso, end_iso)
+        tasks_completed = self.repository.fetch_tasks_completed_count(
+            start_iso, end_iso
+        )
         active_task_ids = {
             task["id"]
             for project in project_totals
@@ -1044,9 +1080,7 @@ class TaskService:
         for entry in entries:
             entry_start = self._parse_datetime(entry["started_at"])
             entry_end = (
-                self._parse_datetime(entry["ended_at"])
-                if entry["ended_at"]
-                else now
+                self._parse_datetime(entry["ended_at"]) if entry["ended_at"] else now
             )
             entry_labels = [
                 label["name"] for label in labels_map.get(entry["task_id"], [])
@@ -1115,9 +1149,7 @@ class TaskService:
         for entry in entries:
             entry_start = self._parse_datetime(entry["started_at"])
             entry_end = (
-                self._parse_datetime(entry["ended_at"])
-                if entry["ended_at"]
-                else now
+                self._parse_datetime(entry["ended_at"]) if entry["ended_at"] else now
             )
             overlap_start = max(entry_start, start_day)
             overlap_end = min(entry_end, end_day)
@@ -1156,9 +1188,13 @@ class TaskService:
                 totals_map[key] = self._sum_time_entries_between(start_date, end_date)
             total_seconds = totals_map[key]
             target_seconds = int(goal["target_seconds"] or 0)
-            progress = int((total_seconds / target_seconds) * 100) if target_seconds else 0
+            progress = (
+                int((total_seconds / target_seconds) * 100) if target_seconds else 0
+            )
             progress = min(progress, 100)
-            week_label = f"{start_date.strftime('%b %d')} - {end_date.strftime('%b %d')}"
+            week_label = (
+                f"{start_date.strftime('%b %d')} - {end_date.strftime('%b %d')}"
+            )
             label_data = None
             if goal.get("label_id") and goal.get("label_name"):
                 label_data = {
@@ -1205,7 +1241,15 @@ class TaskService:
             label_id,
         )
 
-    def update_weekly_goal(self, goal_id, title, target_hours, status, long_term_goal_id=None, label_id=None):
+    def update_weekly_goal(
+        self,
+        goal_id,
+        title,
+        target_hours,
+        status,
+        long_term_goal_id=None,
+        label_id=None,
+    ):
         title = (title or "").strip()
         status = (status or "active").strip()
         target_seconds = self._hours_to_seconds(target_hours)
@@ -1259,9 +1303,7 @@ class TaskService:
         for entry in entries:
             entry_start = self._parse_datetime(entry["started_at"])
             entry_end = (
-                self._parse_datetime(entry["ended_at"])
-                if entry["ended_at"]
-                else now
+                self._parse_datetime(entry["ended_at"]) if entry["ended_at"] else now
             )
             overlap_start = max(entry_start, start_dt)
             overlap_end = min(entry_end, end_dt)
@@ -1347,9 +1389,7 @@ class TaskService:
         goal_tasks_map = self.repository.fetch_goal_tasks(goal_ids)
         goal_subgoals_map = self.repository.fetch_goal_subgoals(goal_ids)
 
-        project_ids = sorted(
-            {pid for ids in goal_projects_map.values() for pid in ids}
-        )
+        project_ids = sorted({pid for ids in goal_projects_map.values() for pid in ids})
         projects = self.repository.fetch_projects_by_ids(project_ids)
         projects_by_id = {project["id"]: dict(project) for project in projects}
 
@@ -1383,15 +1423,21 @@ class TaskService:
             linked_project_ids = goal_projects_map.get(goal_id, [])
             linked_task_ids = set(direct_task_ids)
             if linked_project_ids:
-                for task in self.repository.fetch_tasks_by_project_ids(linked_project_ids):
+                for task in self.repository.fetch_tasks_by_project_ids(
+                    linked_project_ids
+                ):
                     linked_task_ids.add(task["id"])
 
             linked_task_ids = sorted(linked_task_ids)
-            total_seconds = sum(task_totals.get(task_id, 0) for task_id in linked_task_ids)
+            total_seconds = sum(
+                task_totals.get(task_id, 0) for task_id in linked_task_ids
+            )
             deadline_total_days = None
             deadline_remaining_days = None
             deadline_percent = None
-            target_date_value = goal["target_date"] if "target_date" in goal.keys() else None
+            target_date_value = (
+                goal["target_date"] if "target_date" in goal.keys() else None
+            )
             if target_date_value:
                 try:
                     target_date = datetime.fromisoformat(target_date_value).date()
@@ -1406,13 +1452,13 @@ class TaskService:
                     remaining_days = max(0, (target_date - today).days)
                     deadline_total_days = total_days
                     deadline_remaining_days = remaining_days
-                    deadline_percent = min(100, max(0, int((remaining_days / total_days) * 100)))
+                    deadline_percent = min(
+                        100, max(0, int((remaining_days / total_days) * 100))
+                    )
             subgoals = []
             for subgoal in goal_subgoals_map.get(goal_id, []):
                 project_id = subgoal.get("project_id")
-                project = (
-                    subgoal_projects_by_id.get(project_id) if project_id else None
-                )
+                project = subgoal_projects_by_id.get(project_id) if project_id else None
                 subgoals.append(
                     {
                         **subgoal,
@@ -1420,13 +1466,19 @@ class TaskService:
                     }
                 )
             subgoals_total = len(subgoals)
-            subgoals_done = sum(1 for subgoal in subgoals if subgoal["status"] == "completed")
+            subgoals_done = sum(
+                1 for subgoal in subgoals if subgoal["status"] == "completed"
+            )
             if subgoals_total:
                 progress = int((subgoals_done / subgoals_total) * 100)
-                display_status = "completed" if subgoals_done == subgoals_total else "active"
+                display_status = (
+                    "completed" if subgoals_done == subgoals_total else "active"
+                )
             else:
                 target_seconds = int(goal["target_seconds"] or 0)
-                progress = int((total_seconds / target_seconds) * 100) if target_seconds else 0
+                progress = (
+                    int((total_seconds / target_seconds) * 100) if target_seconds else 0
+                )
                 progress = min(progress, 100)
                 display_status = goal["status"]
             label_data = None
@@ -1442,7 +1494,11 @@ class TaskService:
                     **dict(goal),
                     "project_ids": linked_project_ids,
                     "task_ids": direct_task_ids,
-                    "projects": [projects_by_id[pid] for pid in linked_project_ids if pid in projects_by_id],
+                    "projects": [
+                        projects_by_id[pid]
+                        for pid in linked_project_ids
+                        if pid in projects_by_id
+                    ],
                     "subgoals": subgoals,
                     "subgoals_count": subgoals_total,
                     "subgoals_completed": subgoals_done,
@@ -1512,7 +1568,9 @@ class TaskService:
             label_id,
             created_at,
         )
-        filtered_project_ids = [int(pid) for pid in project_ids or [] if str(pid).strip()]
+        filtered_project_ids = [
+            int(pid) for pid in project_ids or [] if str(pid).strip()
+        ]
         filtered_task_ids = [int(tid) for tid in task_ids or [] if str(tid).strip()]
         self.repository.set_goal_projects(goal_id, filtered_project_ids)
         self.repository.set_goal_tasks(goal_id, filtered_task_ids)
@@ -1551,7 +1609,9 @@ class TaskService:
             target_seconds,
             label_id,
         )
-        filtered_project_ids = [int(pid) for pid in project_ids or [] if str(pid).strip()]
+        filtered_project_ids = [
+            int(pid) for pid in project_ids or [] if str(pid).strip()
+        ]
         filtered_task_ids = [int(tid) for tid in task_ids or [] if str(tid).strip()]
         self.repository.set_goal_projects(int(goal_id), filtered_project_ids)
         self.repository.set_goal_tasks(int(goal_id), filtered_task_ids)
@@ -1631,15 +1691,29 @@ class TaskService:
     def list_task_daily_checks(self, task_ids, start_date, end_date):
         if not task_ids:
             return {}
-        start_iso = start_date.isoformat() if hasattr(start_date, "isoformat") else str(start_date)
-        end_iso = end_date.isoformat() if hasattr(end_date, "isoformat") else str(end_date)
-        return self.repository.fetch_task_daily_checks_between(task_ids, start_iso, end_iso)
+        start_iso = (
+            start_date.isoformat()
+            if hasattr(start_date, "isoformat")
+            else str(start_date)
+        )
+        end_iso = (
+            end_date.isoformat() if hasattr(end_date, "isoformat") else str(end_date)
+        )
+        return self.repository.fetch_task_daily_checks_between(
+            task_ids, start_iso, end_iso
+        )
 
     def list_habit_logs_between(self, habit_ids, start_date, end_date):
         if not habit_ids:
             return {}
-        start_iso = start_date.isoformat() if hasattr(start_date, "isoformat") else str(start_date)
-        end_iso = end_date.isoformat() if hasattr(end_date, "isoformat") else str(end_date)
+        start_iso = (
+            start_date.isoformat()
+            if hasattr(start_date, "isoformat")
+            else str(start_date)
+        )
+        end_iso = (
+            end_date.isoformat() if hasattr(end_date, "isoformat") else str(end_date)
+        )
         return self.repository.fetch_habit_logs_between(habit_ids, start_iso, end_iso)
 
     def set_task_status(self, task_id, status):
@@ -1717,7 +1791,9 @@ class TaskService:
             "values": values,
         }
 
-    def add_habit(self, name, frequency, time_of_day, reminder, notes, goal_name, subgoal_name):
+    def add_habit(
+        self, name, frequency, time_of_day, reminder, notes, goal_name, subgoal_name
+    ):
         name = (name or "").strip()
         frequency = (frequency or "Daily").strip()
         time_of_day = (time_of_day or "").strip() or None

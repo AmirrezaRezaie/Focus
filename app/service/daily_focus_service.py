@@ -38,7 +38,7 @@ class DailyFocusService:
         user_id: int,
         focus_date: date,
         task_ids: list,
-        time_block: str = 'unscheduled'
+        time_block: str = "unscheduled",
     ) -> dict:
         """Add tasks to daily focus.
 
@@ -58,7 +58,7 @@ class DailyFocusService:
             ValueError: If time_block is invalid or task_ids is invalid/empty
         """
         # Validate time_block
-        valid_blocks = ['morning', 'afternoon', 'evening', 'unscheduled']
+        valid_blocks = ["morning", "afternoon", "evening", "unscheduled"]
         if time_block not in valid_blocks:
             raise ValueError(f"Invalid time_block. Must be one of: {valid_blocks}")
 
@@ -97,20 +97,20 @@ class DailyFocusService:
         for item in items:
             if not isinstance(item, dict):
                 raise ValueError("Each item must be a dictionary")
-            if 'id' not in item or 'time_block' not in item or 'position' not in item:
+            if "id" not in item or "time_block" not in item or "position" not in item:
                 raise ValueError("Each item must have: id, time_block, position")
 
         # Validate time_block values
-        valid_blocks = ['morning', 'afternoon', 'evening', 'unscheduled']
+        valid_blocks = ["morning", "afternoon", "evening", "unscheduled"]
         for item in items:
-            if item['time_block'] not in valid_blocks:
+            if item["time_block"] not in valid_blocks:
                 raise ValueError(f"Invalid time_block: {item['time_block']}")
 
         # Validate positions are sequential per time_block
         positions_by_block = {}
         for item in items:
-            block = item['time_block']
-            pos = item['position']
+            block = item["time_block"]
+            pos = item["position"]
             if block not in positions_by_block:
                 positions_by_block[block] = []
             positions_by_block[block].append(pos)
@@ -118,7 +118,9 @@ class DailyFocusService:
         for block, positions in positions_by_block.items():
             sorted_pos = sorted(positions)
             if sorted_pos != list(range(len(sorted_pos))):
-                raise ValueError(f"Positions for {block} must be sequential starting at 0")
+                raise ValueError(
+                    f"Positions for {block} must be sequential starting at 0"
+                )
 
         return self.repository.reorder_daily_focus(focus_date, items)
 
@@ -141,19 +143,19 @@ class DailyFocusService:
             PermissionError: If item doesn't exist or user is unauthorized
         """
         # Only allow specific fields
-        allowed_fields = ['time_block', 'scheduled_start', 'scheduled_end']
+        allowed_fields = ["time_block", "scheduled_start", "scheduled_end"]
         filtered = {k: v for k, v in updates.items() if k in allowed_fields}
 
         # Validate time_block if provided
-        if 'time_block' in filtered:
-            valid_blocks = ['morning', 'afternoon', 'evening', 'unscheduled']
-            if filtered['time_block'] not in valid_blocks:
+        if "time_block" in filtered:
+            valid_blocks = ["morning", "afternoon", "evening", "unscheduled"]
+            if filtered["time_block"] not in valid_blocks:
                 raise ValueError(f"Invalid time_block: {filtered['time_block']}")
 
         # Validate scheduled times make sense
-        if 'scheduled_start' in filtered and 'scheduled_end' in filtered:
-            start = filtered['scheduled_start']
-            end = filtered['scheduled_end']
+        if "scheduled_start" in filtered and "scheduled_end" in filtered:
+            start = filtered["scheduled_start"]
+            end = filtered["scheduled_end"]
             if start and end and start >= end:
                 raise ValueError("scheduled_start must be before scheduled_end")
 
@@ -199,11 +201,7 @@ class DailyFocusService:
         return result
 
     def auto_fill(
-        self,
-        user_id: int,
-        focus_date: date,
-        max_tasks: int = 5,
-        priority: str = 'high'
+        self, user_id: int, focus_date: date, max_tasks: int = 5, priority: str = "high"
     ) -> dict:
         """Auto-fill focus list with high-priority tasks.
 
@@ -221,7 +219,7 @@ class DailyFocusService:
         """
         if max_tasks < 1:
             raise ValueError("max_tasks must be at least 1")
-        if priority not in ['high', 'medium', 'low']:
+        if priority not in ["high", "medium", "low"]:
             raise ValueError("priority must be one of: high, medium, low")
 
         return self.repository.auto_fill_daily_focus(focus_date, max_tasks, priority)

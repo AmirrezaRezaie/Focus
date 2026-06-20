@@ -5,7 +5,15 @@ import time
 import uuid
 
 from flask import Response, g, request
-from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, Gauge, Summary, Info, generate_latest
+from prometheus_client import (
+    CONTENT_TYPE_LATEST,
+    Counter,
+    Histogram,
+    Gauge,
+    Summary,
+    Info,
+    generate_latest,
+)
 
 
 # ============= HTTP Request Metrics ============
@@ -25,13 +33,13 @@ REQUEST_DURATION_SECONDS = Histogram(
 REQUEST_SIZE_BYTES = Summary(
     "goalixa_http_request_size_bytes",
     "HTTP request size in bytes.",
-    ["method", "route"]
+    ["method", "route"],
 )
 
 RESPONSE_SIZE_BYTES = Summary(
     "goalixa_http_response_size_bytes",
     "HTTP response size in bytes.",
-    ["method", "route", "status_code"]
+    ["method", "route", "status_code"],
 )
 
 REQUEST_EXCEPTIONS_TOTAL = Counter(
@@ -153,10 +161,7 @@ EXTERNAL_SERVICE_DURATION_SECONDS = Histogram(
 
 
 # ============= Application Info =============
-APP_INFO = Info(
-    "goalixa_app_info",
-    "Goalixa application information"
-)
+APP_INFO = Info("goalixa_app_info", "Goalixa application information")
 
 
 # ============= Error Metrics =============
@@ -190,11 +195,13 @@ def register_observability(app):
     log_requests_enabled = os.getenv("LOG_REQUESTS_ENABLED", "1") == "1"
 
     # Initialize application info
-    APP_INFO.info({
-        'version': os.getenv('APP_VERSION', '1.0.0'),
-        'environment': os.getenv('ENVIRONMENT', 'development'),
-        'service': 'goalixa-app'
-    })
+    APP_INFO.info(
+        {
+            "version": os.getenv("APP_VERSION", "1.0.0"),
+            "environment": os.getenv("ENVIRONMENT", "development"),
+            "service": "goalixa-app",
+        }
+    )
 
     @app.route("/metrics", methods=["GET"])
     def prometheus_metrics():
@@ -210,8 +217,7 @@ def register_observability(app):
         # Track request size
         if request.content_length:
             REQUEST_SIZE_BYTES.labels(
-                method=request.method,
-                route=request.endpoint or "unknown"
+                method=request.method, route=request.endpoint or "unknown"
             ).observe(request.content_length)
 
     @app.after_request
@@ -233,9 +239,7 @@ def register_observability(app):
         # Track response size
         if response.content_length:
             RESPONSE_SIZE_BYTES.labels(
-                method=method,
-                route=route,
-                status_code=status_code
+                method=method, route=route, status_code=status_code
             ).observe(response.content_length)
 
         request_id = getattr(g, "request_id", "")

@@ -2,6 +2,7 @@
 Metrics Helper Module
 Provides convenient functions for recording Prometheus metrics throughout the application.
 """
+
 import time
 import functools
 from contextlib import contextmanager
@@ -26,6 +27,7 @@ from app.observability import (
 
 # ============= Database Metrics Helpers =============
 
+
 @contextmanager
 def track_db_query(operation: str, table: str):
     """
@@ -45,7 +47,9 @@ def track_db_query(operation: str, table: str):
         raise
     finally:
         duration = time.perf_counter() - start_time
-        DB_QUERY_DURATION_SECONDS.labels(operation=operation, table=table).observe(duration)
+        DB_QUERY_DURATION_SECONDS.labels(operation=operation, table=table).observe(
+            duration
+        )
         DB_QUERY_TOTAL.labels(operation=operation, table=table, status=status).inc()
 
 
@@ -58,16 +62,20 @@ def track_db_query_decorator(operation: str, table: str):
         def get_all_tasks():
             return db.session.query(Task).all()
     """
+
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             with track_db_query(operation, table):
                 return func(*args, **kwargs)
+
         return wrapper
+
     return decorator
 
 
 # ============= Auth Metrics Helpers =============
+
 
 def record_auth_validation(validation_type: str, success: bool):
     """
@@ -82,6 +90,7 @@ def record_auth_validation(validation_type: str, success: bool):
 
 
 # ============= Business Logic Metrics Helpers =============
+
 
 def record_task_operation(operation: str, success: bool = True):
     """
@@ -145,6 +154,7 @@ def record_project_operation(operation: str, success: bool = True):
 
 # ============= Cache Metrics Helpers =============
 
+
 @contextmanager
 def track_cache_operation(operation: str):
     """
@@ -190,6 +200,7 @@ def record_cache_delete():
 
 # ============= External Service Metrics Helpers =============
 
+
 @contextmanager
 def track_external_service_call(service: str, operation: str):
     """
@@ -209,11 +220,16 @@ def track_external_service_call(service: str, operation: str):
         raise
     finally:
         duration = time.perf_counter() - start_time
-        EXTERNAL_SERVICE_DURATION_SECONDS.labels(service=service, operation=operation).observe(duration)
-        EXTERNAL_SERVICE_REQUESTS_TOTAL.labels(service=service, operation=operation, status=status).inc()
+        EXTERNAL_SERVICE_DURATION_SECONDS.labels(
+            service=service, operation=operation
+        ).observe(duration)
+        EXTERNAL_SERVICE_REQUESTS_TOTAL.labels(
+            service=service, operation=operation, status=status
+        ).inc()
 
 
 # ============= Error Metrics Helpers =============
+
 
 def record_error(error_type: str, component: str):
     """
@@ -228,6 +244,7 @@ def record_error(error_type: str, component: str):
 
 # ============= Generic Operation Tracker =============
 
+
 def track_operation(metrics_counter, operation: str):
     """
     Generic decorator to track operations using any metric counter.
@@ -237,6 +254,7 @@ def track_operation(metrics_counter, operation: str):
         def create_task(data):
             # ... implementation
     """
+
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
@@ -247,5 +265,7 @@ def track_operation(metrics_counter, operation: str):
             except Exception:
                 metrics_counter.labels(operation=operation, status="failed").inc()
                 raise
+
         return wrapper
+
     return decorator

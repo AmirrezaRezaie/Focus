@@ -29,6 +29,69 @@ def register_routes(app, service):
             app.logger.error(f"Error fetching analytics: {str(e)}")
             return jsonify({"error": "Failed to fetch analytics"}), 500
 
+    @app.route("/api/analytics/logins", methods=["GET"])
+    @admin_required()
+    def api_get_login_history():
+        """Get platform-wide login history."""
+        try:
+            page = int(request.args.get("page", 1))
+            per_page = int(request.args.get("per_page", 20))
+
+            rows, total = service.repository.fetch_login_history(
+                page=page, per_page=per_page
+            )
+
+            logins = []
+            for row in rows:
+                logins.append(
+                    {
+                        "id": row["id"],
+                        "email": row["email"],
+                        "timestamp": row["created_at"],
+                        "device": "Unknown",  # Metadata not available in Core DB
+                    }
+                )
+
+            return jsonify(
+                {"logins": logins, "total": total, "page": page, "per_page": per_page}
+            )
+        except Exception as e:
+            app.logger.error(f"Error fetching login history: {str(e)}")
+            return jsonify({"error": "Failed to fetch login history"}), 500
+
+    @app.route("/api/analytics/activity", methods=["GET"])
+    @admin_required()
+    def api_get_activity():
+        """Get activity data for charts."""
+        try:
+            rows = service.repository.fetch_activity_series(days=30)
+            activity = [
+                {"date": row["date"].isoformat(), "count": row["count"]} for row in rows
+            ]
+            return jsonify({"activity": activity})
+        except Exception as e:
+            app.logger.error(f"Error fetching activity: {str(e)}")
+            return jsonify({"error": "Failed to fetch activity"}), 500
+
+    @app.route("/api/analytics/tasks", methods=["GET"])
+    @admin_required()
+    def api_get_task_analytics():
+        """Get task creation and completion activity."""
+        try:
+            rows = service.repository.fetch_task_activity_series(days=30)
+            task_activity = [
+                {
+                    "date": row["date"].isoformat(),
+                    "created": row["created"],
+                    "completed": row["completed"],
+                }
+                for row in rows
+            ]
+            return jsonify({"task_activity": task_activity})
+        except Exception as e:
+            app.logger.error(f"Error fetching task analytics: {str(e)}")
+            return jsonify({"error": "Failed to fetch task analytics"}), 500
+
     @app.route("/api/users", methods=["GET"])
     @admin_required()
     def api_list_users():
@@ -36,24 +99,30 @@ def register_routes(app, service):
         try:
             page = int(request.args.get("page", 1))
             per_page = int(request.args.get("per_page", 20))
-            
-            users_rows, total_count = service.repository.fetch_all_users(page=page, per_page=per_page)
-            
+
+            users_rows, total_count = service.repository.fetch_all_users(
+                page=page, per_page=per_page
+            )
+
             users = []
             for row in users_rows:
-                users.append({
-                    "id": row["id"],
-                    "email": row["email"],
-                    "created_at": row["created_at"],
-                    "active": row["active"],
-                })
-                
-            return jsonify({
-                "users": users,
-                "total_count": total_count,
-                "page": page,
-                "per_page": per_page,
-            })
+                users.append(
+                    {
+                        "id": row["id"],
+                        "email": row["email"],
+                        "created_at": row["created_at"],
+                        "active": row["active"],
+                    }
+                )
+
+            return jsonify(
+                {
+                    "users": users,
+                    "total_count": total_count,
+                    "page": page,
+                    "per_page": per_page,
+                }
+            )
         except Exception as e:
             app.logger.error(f"Error listing users: {str(e)}")
             return jsonify({"error": "Failed to list users"}), 500
@@ -67,9 +136,11 @@ def register_routes(app, service):
             active = data.get("active")
             if active is None:
                 return jsonify({"error": "active status is required"}), 400
-                
+
             service.repository.update_user_active_status(user_id, bool(active))
-            return jsonify({"success": True, "user_id": user_id, "active": bool(active)})
+            return jsonify(
+                {"success": True, "user_id": user_id, "active": bool(active)}
+            )
         except Exception as e:
             app.logger.error(f"Error updating user status: {str(e)}")
             return jsonify({"error": "Failed to update user status"}), 500
@@ -79,17 +150,10 @@ def register_routes(app, service):
     def api_get_user(user_id):
         """Get user details."""
         try:
-            # We need a method in repo to get a single user
-            user = service.repository.fetch_user_by_id(user_id)
-            if not user:
+            user_data = service.repository.fetch_user_full_data(user_id)
+            if not user_data:
                 return jsonify({"error": "User not found"}), 404
-            return jsonify({
-                "id": user["id"],
-                "email": user["email"],
-                "created_at": user["created_at"],
-                "active": user["active"],
-                # We can add more fields here like task count, etc.
-            })
+            return jsonify(user_data)
         except Exception as e:
             app.logger.error(f"Error fetching user: {str(e)}")
             return jsonify({"error": "Failed to fetch user"}), 500
@@ -100,14 +164,16 @@ def register_routes(app, service):
         """Delete a user."""
         try:
             service.repository.delete_user_completely(user_id)
-            return jsonify({"success": True, "message": "User deleted", "user_id": user_id})
+            return jsonify(
+                {"success": True, "message": "User deleted", "user_id": user_id}
+            )
         except Exception as e:
             app.logger.error(f"Error deleting user: {str(e)}")
             return jsonify({"error": "Failed to delete user"}), 500
 
     @app.route("/health", methods=["GET"])
     def health():
-        """Health check endpoint for Kubernetes probes (no auth required).. """
+        """Health check endpoint for Kubernetes probes (no auth required).."""
         return jsonify({"status": "ok"}), 200
 
     @app.before_request
@@ -121,7 +187,10 @@ def register_routes(app, service):
                     "user setup blocked by email conflict",
                     extra={"email": current_user.email, "user_id": current_user.id},
                 )
-                return jsonify({"success": False, "error": "Email already registered."}), 409
+                return (
+                    jsonify({"success": False, "error": "Email already registered."}),
+                    409,
+                )
             return
         service.repository.set_user_id(None)
 
@@ -138,7 +207,7 @@ def register_routes(app, service):
             app.logger.error(
                 "Failed to complete overdue timers",
                 exc_info=True,
-                extra={"user_id": current_user.id, "error": str(e)}
+                extra={"user_id": current_user.id, "error": str(e)},
             )
 
     def parse_iso(value):
@@ -546,7 +615,9 @@ def register_routes(app, service):
 
         habits_list = service.list_habits(today.isoformat())
         habit_ids = [habit["id"] for habit in habits_list]
-        habit_logs_map = service.list_habit_logs_between(habit_ids, week_start, week_end)
+        habit_logs_map = service.list_habit_logs_between(
+            habit_ids, week_start, week_end
+        )
         habit_rows = []
         for habit in habits_list:
             checked_dates = habit_logs_map.get(habit["id"], set())
@@ -813,7 +884,9 @@ def register_routes(app, service):
     @auth_required()
     def edit_label_api(label_id):
         payload = _json_payload()
-        service.update_label(label_id, payload.get("name", ""), payload.get("color", ""))
+        service.update_label(
+            label_id, payload.get("name", ""), payload.get("color", "")
+        )
         return jsonify(_build_labels_payload())
 
     @app.route("/api/labels/<int:label_id>/delete", methods=["POST"])
@@ -1021,7 +1094,14 @@ def register_routes(app, service):
                 goal_id = int(goal_id) if goal_id else None
             except (TypeError, ValueError):
                 goal_id = None
-        service.update_task_details(task_id, name=name, project_id=project_id, priority=priority, label_ids=label_ids, goal_id=goal_id)
+        service.update_task_details(
+            task_id,
+            name=name,
+            project_id=project_id,
+            priority=priority,
+            label_ids=label_ids,
+            goal_id=goal_id,
+        )
         return jsonify(_build_tasks_payload())
 
     @app.route("/api/tasks/<int:task_id>/labels", methods=["POST"])
@@ -1035,7 +1115,7 @@ def register_routes(app, service):
             except (TypeError, ValueError) as e:
                 app.logger.warning(
                     "Failed to add label to task",
-                    extra={"task_id": task_id, "label_id": label_id, "error": str(e)}
+                    extra={"task_id": task_id, "label_id": label_id, "error": str(e)},
                 )
         return jsonify(_build_tasks_payload())
 
@@ -1096,7 +1176,11 @@ def register_routes(app, service):
             except (TypeError, ValueError) as e:
                 app.logger.warning(
                     "Failed to add label to project",
-                    extra={"project_id": project_id, "label_id": label_id, "error": str(e)}
+                    extra={
+                        "project_id": project_id,
+                        "label_id": label_id,
+                        "error": str(e),
+                    },
                 )
         return list_projects_api()
 
@@ -1125,11 +1209,20 @@ def register_routes(app, service):
         """
         try:
             date_str = request.args.get("date")
-            focus_date = datetime.strptime(date_str, "%Y-%m-%d").date() if date_str else datetime.now().date()
+            focus_date = (
+                datetime.strptime(date_str, "%Y-%m-%d").date()
+                if date_str
+                else datetime.now().date()
+            )
             result = service.daily_focus_service.get_focus(current_user.id, focus_date)
             # Return empty focus list if none exists (not an error)
             if not result:
-                result = {"date": focus_date.isoformat(), "items": [], "blocks": {}, "summary": {"total": 0, "completed": 0}}
+                result = {
+                    "date": focus_date.isoformat(),
+                    "items": [],
+                    "blocks": {},
+                    "summary": {"total": 0, "completed": 0},
+                }
             return jsonify(result), 200
         except ValueError as e:
             return jsonify({"error": f"Invalid date format: {str(e)}"}), 400
@@ -1207,7 +1300,9 @@ def register_routes(app, service):
             focus_date = datetime.strptime(date_str, "%Y-%m-%d").date()
             items = payload.get("items", [])
 
-            result = service.daily_focus_service.reorder(current_user.id, focus_date, items)
+            result = service.daily_focus_service.reorder(
+                current_user.id, focus_date, items
+            )
             return jsonify(result), 200
         except ValueError as e:
             return jsonify({"error": f"Invalid input: {str(e)}"}), 400
@@ -1238,7 +1333,9 @@ def register_routes(app, service):
         """
         try:
             payload = _json_payload()
-            result = service.daily_focus_service.update_item(current_user.id, item_id, payload)
+            result = service.daily_focus_service.update_item(
+                current_user.id, item_id, payload
+            )
             return jsonify(result), 200
         except PermissionError:
             return jsonify({"error": "Item not found"}), 404
@@ -1360,7 +1457,9 @@ def register_routes(app, service):
             to_date_str = payload.get("to_date", str(datetime.now().date()))
             to_date = datetime.strptime(to_date_str, "%Y-%m-%d").date()
 
-            result = service.daily_focus_service.carry_over(current_user.id, from_date, to_date)
+            result = service.daily_focus_service.carry_over(
+                current_user.id, from_date, to_date
+            )
             return jsonify(result), 200
         except ValueError as e:
             return jsonify({"error": f"Invalid input: {str(e)}"}), 400
