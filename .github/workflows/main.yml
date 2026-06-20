@@ -105,7 +105,7 @@ jobs:
             --tag ${IMAGE}:latest
 
           # Also tag with SHA
-          ./crane tag ${IMAGE}:latest ${IMAGE}:${SHA_TAG}
+          ./crane tag ${IMAGE}:latest ${SHA_TAG}
 
           echo "Pushed multi-arch image: ${IMAGE}:latest and ${IMAGE}:${SHA_TAG}"
 
