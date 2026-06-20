@@ -19,6 +19,16 @@ on:
       - '**.md'
       - '.argo/**'
       - 'helm/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
 
 permissions:
   contents: read
@@ -37,24 +47,24 @@ jobs:
       - name: Set image repository and deployment config
         id: config
         run: |
-          # Determine environment based on branch
-          # For PRs, use the base branch (target); for pushes, use ref
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+          # Determine environment
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            ENVIRONMENT="${{ github.event.inputs.environment }}"
+            if [[ "$ENVIRONMENT" == "staging" ]]; then BRANCH="staging"; else BRANCH="main"; fi
+          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
             BRANCH="${{ github.base_ref }}"
           else
             BRANCH="${{ github.ref_name }}"
           fi
 
           if [[ "$BRANCH" == "staging" ]]; then
-            # Staging deployment - always use latest
+            # Staging deployment
             echo "repository=core-api-staging/app" >> $GITHUB_OUTPUT
-            echo "image_tag=latest" >> $GITHUB_OUTPUT
             echo "environment=staging" >> $GITHUB_OUTPUT
             echo "app_name=core-api-staging" >> $GITHUB_OUTPUT
           elif [[ "$BRANCH" == "main" ]]; then
-            # Production deployment - always use latest
+            # Production deployment
             echo "repository=core-api/app" >> $GITHUB_OUTPUT
-            echo "image_tag=latest" >> $GITHUB_OUTPUT
             echo "environment=production" >> $GITHUB_OUTPUT
             echo "app_name=core-api" >> $GITHUB_OUTPUT
           else
@@ -68,33 +78,43 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to Harbor
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ secrets.HARBOR_USERNAME }}
-          password: ${{ secrets.HARBOR_PASSWORD }}
+      - name: Install crane
+        run: |
+          curl -sL "https://github.com/google/go-containerregistry/releases/latest/download/go-containerregistry_Linux_x86_64.tar.gz" | tar -xzf - crane
+          ./crane auth login harbor.goalixa.com -u '${{ secrets.HARBOR_USERNAME }}' -p '${{ secrets.HARBOR_PASSWORD }}'
 
-      - name: Extract Docker metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ steps.config.outputs.repository }}
-          tags: |
-            type=raw,value=latest
+      - name: Build and push multi-arch image
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ steps.config.outputs.repository }}"
+          SHA_TAG="${GITHUB_SHA:0:7}"
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.meta.outputs.tags }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          labels: |
-            org.opencontainers.image.source=${{ github.repositoryUrl }}
-            org.opencontainers.image.revision=${{ github.sha }}
+          # Build and push amd64
+          docker buildx build --platform linux/amd64 --load --tag ${IMAGE}:latest-amd64 .
+          docker save ${IMAGE}:latest-amd64 -o image-amd64.tar
+          ./crane push image-amd64.tar ${IMAGE}:latest-amd64
+
+          # Build and push arm64
+          docker buildx build --platform linux/arm64 --load --tag ${IMAGE}:latest-arm64 .
+          docker save ${IMAGE}:latest-arm64 -o image-arm64.tar
+          ./crane push image-arm64.tar ${IMAGE}:latest-arm64
+
+          # Create multi-arch manifest for latest
+          ./crane index append \
+            --manifest ${IMAGE}:latest-amd64 \
+            --manifest ${IMAGE}:latest-arm64 \
+            --tag ${IMAGE}:latest
+
+          # Also tag with SHA
+          ./crane tag ${IMAGE}:latest ${IMAGE}:${SHA_TAG}
+
+          echo "Pushed multi-arch image: ${IMAGE}:latest and ${IMAGE}:${SHA_TAG}"
+
+      - name: Get image tag
+        id: tag
+        run: |
+          IMAGE_TAG="${GITHUB_SHA:0:7}"
+          echo "tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+          echo "image=${{ env.REGISTRY }}/${{ steps.config.outputs.repository }}:${IMAGE_TAG}" >> $GITHUB_OUTPUT
 
       - name: Setup kubectl
         run: |
@@ -109,7 +129,7 @@ jobs:
       - name: Update ArgoCD application
         if: env.HAS_KUBE_CONFIG == 'true'
         run: |
-          IMAGE_TAG="${{ steps.config.outputs.image_tag }}"
+          IMAGE_TAG="${{ steps.tag.outputs.tag }}"
           APP_NAME="${{ steps.config.outputs.app_name }}"
           ENVIRONMENT="${{ steps.config.outputs.environment }}"
 
@@ -145,12 +165,12 @@ jobs:
       - name: Summary
         run: |
           ENVIRONMENT="${{ steps.config.outputs.environment }}"
-          IMAGE_TAG="${{ steps.config.outputs.image_tag }}"
+          IMAGE_TAG="${{ steps.tag.outputs.tag }}"
           echo "## ✅ Build & Deploy Complete (${ENVIRONMENT})" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Environment:** \`${ENVIRONMENT}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Image Tag:** \`${IMAGE_TAG}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Full Image:** \`${{ env.REGISTRY }}/${{ steps.config.outputs.repository }}:${IMAGE_TAG}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Full Image:** \`${{ steps.tag.outputs.image }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Registry:** \`${{ env.REGISTRY }}/${{ steps.config.outputs.repository }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **ArgoCD App:** \`${{ steps.config.outputs.app_name }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
